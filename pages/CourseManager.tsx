@@ -96,21 +96,59 @@ const CourseManager = () => {
           return;
       }
 
-      if (!confirm(`Upload "${course.name}" to the cloud as user "${user}"? \n\nYou can then download it on your other devices.`)) return;
-      
       setIsUploading(course.id);
-      // Pass the user (username) to the upload function
-      const res = await CloudService.uploadCourse(course, user);
-      setIsUploading(null);
 
-      if (res.success) {
-          alert("Success! Your course is now in the Global Library.\n\nSwitch to the 'Global Library' tab on your other device to search and download it.");
-          // Optional: switch to online tab and search for it to prove it's there
-          setSearchQuery(course.name);
-          setActiveTab('online');
-          handleSearch();
-      } else {
-          alert("Upload failed: " + res.message);
+      try {
+          // 1. Check if course already exists for this user
+          const existingCloudId = await CloudService.checkCourseExists(course.name, user);
+          
+          let success = false;
+          let msg = "";
+
+          if (existingCloudId) {
+              // Ask user for action
+              // Note: We use window.confirm sequence because standard browser alerts are blocking.
+              // In a real app, a custom modal is better, but this fits the constraint.
+              // We can't do complex UI logic inside this async flow easily without a custom modal component.
+              // For now, we assume simple Overwrite vs Cancel/New.
+              
+              if (confirm(`A course named "${course.name}" by you already exists in the cloud.\n\nClick OK to OVERWRITE/UPDATE it.\nClick Cancel to Create a Duplicate Copy.`)) {
+                  // Update existing
+                  const res = await CloudService.updateCourse(existingCloudId, course, user);
+                  success = res.success;
+                  msg = res.message || "Update failed";
+              } else {
+                  // Create New Copy
+                  if (confirm("Create a new duplicate copy in the cloud instead?")) {
+                      const res = await CloudService.uploadCourse(course, user);
+                      success = res.success;
+                      msg = res.message || "Upload failed";
+                  } else {
+                      setIsUploading(null);
+                      return; // User cancelled everything
+                  }
+              }
+          } else {
+              // New Course
+              const res = await CloudService.uploadCourse(course, user);
+              success = res.success;
+              msg = res.message || "Upload failed";
+          }
+
+          if (success) {
+              alert("Success! Your course data has been synced to the Global Library.");
+              // Optional: switch to online tab and search for it to prove it's there
+              setSearchQuery(course.name);
+              setActiveTab('online');
+              handleSearch();
+          } else {
+              alert("Operation failed: " + msg);
+          }
+
+      } catch (error: any) {
+          alert("Network error: " + error.message);
+      } finally {
+          setIsUploading(null);
       }
   };
 
@@ -165,7 +203,7 @@ const CourseManager = () => {
                                     onClick={() => handleUpload(c)}
                                     disabled={isUploading === c.id}
                                     className="p-2 bg-blue-900/20 text-blue-400 rounded-lg hover:bg-blue-900/40 disabled:opacity-50 transition-colors"
-                                    title="Upload to Cloud"
+                                    title="Upload/Update to Cloud"
                                 >
                                      {isUploading === c.id ? <Loader2 size={16} className="animate-spin"/> : <UploadCloud size={16} />}
                                 </button>
@@ -189,7 +227,7 @@ const CourseManager = () => {
                 )}
                 
                 <div className="text-center text-xs text-gray-600 mt-4 px-8">
-                    Tap the Cloud icon <UploadCloud size={10} className="inline"/> to upload your course. Then open this app on another device to download it.
+                    Tap the Cloud icon <UploadCloud size={10} className="inline"/> to upload or update your course.
                 </div>
             </>
         )}
@@ -247,11 +285,15 @@ const CourseManager = () => {
                     // Check if we already have this course (by Name matching)
                     const isDownloaded = localCourses.some(lc => lc.name.toLowerCase() === c.name.toLowerCase());
                     const author = (c as any).author || 'Unknown';
+                    const isMyCloudCourse = author === user;
                     
                     return (
-                        <div key={c.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                        <div key={c.id} className={`bg-gray-800 p-4 rounded-xl border flex justify-between items-center ${isMyCloudCourse ? 'border-blue-900/50 bg-blue-900/10' : 'border-gray-700'}`}>
                             <div className="flex-1 min-w-0 pr-4">
-                                <div className="font-bold text-white text-lg truncate">{c.name}</div>
+                                <div className="font-bold text-white text-lg truncate flex items-center gap-2">
+                                    {c.name}
+                                    {isMyCloudCourse && <span className="bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded uppercase">Yours</span>}
+                                </div>
                                 <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
                                     {c.country && <span className="text-blue-400 font-bold">{c.country} •</span>}
                                     <span>{c.holes?.length || 18} Holes</span>

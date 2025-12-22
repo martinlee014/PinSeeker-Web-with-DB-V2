@@ -3,12 +3,13 @@ import { useState, useEffect, useContext, Fragment, useMemo, useRef } from 'reac
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { GoogleGenAI, Type } from "@google/genai";
 import { AppContext } from '../App';
 import { StorageService } from '../services/storage';
 import * as MathUtils from '../services/mathUtils';
 import { GolfCourse, GolfHole } from '../types';
 import { COUNTRIES } from '../constants';
-import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine, Globe } from 'lucide-react';
+import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine, Globe, Layers, ExternalLink } from 'lucide-react';
 import { ModalOverlay } from '../components/Modals';
 
 // --- Icons Configuration ---
@@ -139,6 +140,7 @@ const CourseEditor = () => {
   const [step, setStep] = useState<'info' | 'map'>('info');
   const [courseName, setCourseName] = useState('');
   const [country, setCountry] = useState('');
+  const [holeCount, setHoleCount] = useState<9 | 18>(18);
   const [isSearching, setIsSearching] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
@@ -164,6 +166,8 @@ const CourseEditor = () => {
         setCourseName(existingCourse.name);
         setCountry(existingCourse.country || '');
         setHoles(existingCourse.holes);
+        if (existingCourse.holes.length === 9) setHoleCount(9);
+        else setHoleCount(18);
         
         const firstPoint = existingCourse.holes.find(h => h.tee.lat !== 0);
         if (firstPoint) {
@@ -178,14 +182,93 @@ const CourseEditor = () => {
     }
   }, [existingCourse]);
 
+  // Adjust holes array when holeCount changes
+  useEffect(() => {
+      setHoles(prevHoles => {
+          if (holeCount === prevHoles.length) return prevHoles;
+          
+          if (holeCount === 9) {
+              return prevHoles.slice(0, 9);
+          } else {
+              // Expand from 9 to 18
+              const newHoles = [...prevHoles];
+              for (let i = prevHoles.length; i < 18; i++) {
+                  newHoles.push({
+                      number: i + 1,
+                      par: 4,
+                      tee: { lat: 0, lng: 0 },
+                      green: { lat: 0, lng: 0 }
+                  });
+              }
+              return newHoles;
+          }
+      });
+  }, [holeCount]);
+
+  const openGoogleMaps = () => {
+      const query = encodeURIComponent(`Golf Club ${courseName} ${country}`);
+      window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+  };
+
   // --- Enhanced Search Logic ---
   const handleSearch = async () => {
       if (!courseName.trim()) return;
       setIsSearching(true);
 
       const countrySuffix = (country && country !== 'All') ? `, ${country}` : '';
-      
-      // We will try multiple query strategies to find a real golf course
+      const fullQuery = `${courseName}${countrySuffix}`;
+
+      // 1. Direct Coordinate Input Check (Lat, Lng)
+      // Regex allows negative numbers, decimals, and optional space
+      const coordMatch = courseName.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/);
+      if (coordMatch) {
+          const lat = parseFloat(coordMatch[1]);
+          const lng = parseFloat(coordMatch[3]);
+          if (!isNaN(lat) && !isNaN(lng)) {
+              setMapCenter([lat, lng]);
+              setStep('map');
+              setIsSearching(false);
+              return;
+          }
+      }
+
+      // 2. Try Gemini AI Search with Grounding
+      // This helps find obscure courses that OSM misses
+      try {
+          // Use process.env.API_KEY as per guidelines. 
+          // If not configured, we gracefully fall back to Nominatim.
+          if (process.env.API_KEY) {
+              const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+              const response = await ai.models.generateContent({
+                  model: 'gemini-3-flash-preview',
+                  contents: `Find the precise GPS latitude and longitude for the golf course: "${fullQuery}".`,
+                  config: {
+                      tools: [{ googleSearch: {} }],
+                      responseMimeType: "application/json",
+                      responseSchema: {
+                          type: Type.OBJECT,
+                          properties: {
+                              lat: { type: Type.NUMBER, description: "Latitude of the golf course" },
+                              lng: { type: Type.NUMBER, description: "Longitude of the golf course" },
+                              found: { type: Type.BOOLEAN, description: "Whether the specific golf course was found" }
+                          }
+                      }
+                  }
+              });
+              
+              const json = JSON.parse(response.text || '{}');
+              if (json.found && json.lat && json.lng) {
+                  setMapCenter([json.lat, json.lng]);
+                  setStep('map');
+                  setIsSearching(false);
+                  return;
+              }
+          }
+      } catch (e) {
+          console.warn("AI Search unavailable or failed, falling back to OSM", e);
+      }
+
+      // 3. Fallback: Nominatim (OpenStreetMap)
       const strategies = [
           `Golf Club ${courseName}${countrySuffix}`, // Specific
           `${courseName} Golf Course${countrySuffix}`, // Specific
@@ -196,16 +279,12 @@ const CourseEditor = () => {
       try {
           let foundLocation = null;
 
-          // Try strategies sequentially
           for (const query of strategies) {
-              // limit=5 to get candidates, addressdetails=1 to find country
               const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`;
               const res = await fetch(url);
               const results = await res.json();
 
               if (results && results.length > 0) {
-                  // FILTERING: Look for actual golf courses first
-                  // Nominatim tags: class="leisure" type="golf_course" OR class="sport" type="golf"
                   const bestMatch = results.find((item: any) => 
                       item.type === 'golf_course' || 
                       item.class === 'leisure' ||
@@ -214,9 +293,8 @@ const CourseEditor = () => {
 
                   if (bestMatch) {
                       foundLocation = bestMatch;
-                      break; // Found a high quality match
+                      break; 
                   } else if (!foundLocation) {
-                      // Keep the first result as a backup if we find nothing better later
                       foundLocation = results[0]; 
                   }
               }
@@ -226,7 +304,6 @@ const CourseEditor = () => {
               const lat = parseFloat(foundLocation.lat);
               const lon = parseFloat(foundLocation.lon);
 
-              // Auto-fill country if user hasn't selected one
               if (!country && foundLocation.address && foundLocation.address.country) {
                   const detected = foundLocation.address.country;
                   const match = COUNTRIES.find(c => c.toLowerCase() === detected.toLowerCase());
@@ -236,7 +313,7 @@ const CourseEditor = () => {
               setMapCenter([lat, lon]);
               setStep('map');
           } else {
-              alert("Could not locate a golf course with that name. Try adding the City or Country.");
+              alert("Could not locate course automatically.\n\nTip: You can paste exact coordinates (Lat, Lng) into the Name box, or use the 'Map' button to find it on Google.");
           }
 
       } catch (e) {
@@ -379,15 +456,44 @@ const CourseEditor = () => {
 
               <div className="space-y-6">
                   <div>
-                      <label className="block text-gray-400 text-sm font-bold mb-2">Course Name</label>
+                      <div className="flex justify-between items-end mb-2">
+                          <label className="block text-gray-400 text-sm font-bold">Course Name or Coords</label>
+                          <button 
+                            onClick={openGoogleMaps}
+                            className="text-[10px] text-blue-400 flex items-center gap-1 hover:text-blue-300"
+                          >
+                              <ExternalLink size={10} /> Find on Google Maps
+                          </button>
+                      </div>
                       <input 
                         type="text" 
                         className="w-full bg-gray-800 border border-gray-700 p-4 rounded-xl text-white focus:border-green-500 outline-none"
-                        placeholder="e.g. Pebble Beach"
+                        placeholder="e.g. Pebble Beach OR 36.56, -121.95"
                         value={courseName}
                         onChange={e => setCourseName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       />
+                      <p className="text-xs text-gray-500 mt-2">
+                          <strong>Tip:</strong> For facilities with multiple courses (27+ holes), please create separate entries (e.g. "Carton House - O'Meara" and "Carton House - Montgomerie").
+                      </p>
+                  </div>
+
+                  <div>
+                      <label className="block text-gray-400 text-sm font-bold mb-2">Number of Holes</label>
+                      <div className="flex gap-3">
+                          <button 
+                            onClick={() => setHoleCount(9)}
+                            className={`flex-1 py-3 rounded-xl border ${holeCount === 9 ? 'bg-green-600 border-green-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                          >
+                             9 Holes
+                          </button>
+                          <button 
+                            onClick={() => setHoleCount(18)}
+                            className={`flex-1 py-3 rounded-xl border ${holeCount === 18 ? 'bg-green-600 border-green-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                          >
+                             18 Holes
+                          </button>
+                      </div>
                   </div>
 
                   <div>
@@ -415,14 +521,8 @@ const CourseEditor = () => {
                     className="w-full bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/30 text-blue-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                   >
                       {isSearching ? <Loader2 className="animate-spin" size={20}/> : <Search size={20} />}
-                      Search Location on Map
+                      {courseName.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/) ? "Go to Coordinates" : "Search Location"}
                   </button>
-
-                  <div className="bg-gray-800/50 p-4 rounded-xl border border-dashed border-gray-700">
-                      <p className="text-sm text-gray-400">
-                          Tip: Entering a Country and searching for the course name will help auto-locate it on the map.
-                      </p>
-                  </div>
               </div>
 
               <button 
@@ -616,9 +716,9 @@ const CourseEditor = () => {
                      </div>
                  </div>
 
-                 <button onClick={() => setCurrentHoleIdx(Math.min(17, currentHoleIdx + 1))} 
+                 <button onClick={() => setCurrentHoleIdx(Math.min(holes.length - 1, currentHoleIdx + 1))} 
                     className="w-8 h-8 flex items-center justify-center bg-gray-800 rounded-lg text-white disabled:opacity-30 hover:bg-gray-700 transition-colors" 
-                    disabled={currentHoleIdx===17}>
+                    disabled={currentHoleIdx===holes.length - 1}>
                     <ArrowRight size={16} />
                  </button>
             </div>

@@ -72,7 +72,57 @@ export const CloudService = {
   },
 
   /**
-   * Submit a local course to the cloud
+   * Check if a course with the same name exists for this author
+   */
+  checkCourseExists: async (courseName: string, author: string): Promise<string | null> => {
+      const supabase = getClient();
+      if (!supabase) return null;
+
+      // Find course by name AND author inside the JSONB data
+      const { data, error } = await supabase
+        .from('courses')
+        .select('id')
+        .eq('name', courseName)
+        .eq('data->>author', author)
+        .single();
+
+      if (error || !data) return null;
+      return data.id; // Return the Cloud ID if found
+  },
+
+  /**
+   * Update an existing cloud course
+   */
+  updateCourse: async (cloudId: string, course: GolfCourse, username: string): Promise<{ success: boolean; message?: string }> => {
+      const supabase = getClient();
+      if (!supabase) return { success: false, message: "Cloud service not available." };
+
+      const coursePayload = { 
+        ...course,
+        author: username
+      };
+      
+      delete (coursePayload as any).isCloud;
+      delete (coursePayload as any).isCustom;
+      delete (coursePayload as any).id; 
+    
+      const { error } = await supabase
+        .from('courses')
+        .update({
+            data: coursePayload,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', cloudId);
+
+      if (error) {
+          console.error("Update error:", error);
+          return { success: false, message: error.message };
+      }
+      return { success: true };
+  },
+
+  /**
+   * Submit a NEW local course to the cloud
    */
   uploadCourse: async (course: GolfCourse, username: string): Promise<{ success: boolean; message?: string }> => {
     const supabase = getClient();
@@ -85,8 +135,7 @@ export const CloudService = {
         return { success: false, message: "User not identified. Please login again." };
     }
 
-    // 1. Prepare payload: Remove local flags before uploading
-    //    Add the 'author' tag to the data payload
+    // 1. Prepare payload
     const coursePayload = { 
         ...course,
         author: username // Tag the data with the username
