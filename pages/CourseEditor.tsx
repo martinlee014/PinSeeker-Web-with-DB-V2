@@ -7,7 +7,8 @@ import { AppContext } from '../App';
 import { StorageService } from '../services/storage';
 import * as MathUtils from '../services/mathUtils';
 import { GolfCourse, GolfHole } from '../types';
-import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine } from 'lucide-react';
+import { COUNTRIES } from '../constants';
+import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine, Globe } from 'lucide-react';
 import { ModalOverlay } from '../components/Modals';
 
 // --- Icons Configuration ---
@@ -120,6 +121,7 @@ const CourseEditor = () => {
 
   const [step, setStep] = useState<'info' | 'map'>('info');
   const [courseName, setCourseName] = useState('');
+  const [country, setCountry] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
@@ -143,6 +145,7 @@ const CourseEditor = () => {
     if (existingCourse) {
         setExistingId(existingCourse.id);
         setCourseName(existingCourse.name);
+        setCountry(existingCourse.country || '');
         setHoles(existingCourse.holes);
         
         const firstPoint = existingCourse.holes.find(h => h.tee.lat !== 0);
@@ -162,21 +165,38 @@ const CourseEditor = () => {
       if (!courseName.trim()) return;
       setIsSearching(true);
       try {
+          // Add addressdetails=1 to get country info
           const query = `Golf Club ${courseName}`;
-          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&addressdetails=1`);
           const data = await response.json();
           
           if (data && data.length > 0) {
               const lat = parseFloat(data[0].lat);
               const lon = parseFloat(data[0].lon);
+              
+              // Try to auto-detect country from search result
+              if (data[0].address && data[0].address.country) {
+                  // Normalize to match our list if possible, otherwise use what API returned
+                  const detected = data[0].address.country;
+                  const match = COUNTRIES.find(c => c.toLowerCase() === detected.toLowerCase());
+                  setCountry(match || detected);
+              }
+
               setMapCenter([lat, lon]);
               setStep('map'); 
           } else {
-              const fallbackResponse = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(courseName)}&limit=1`);
+              const fallbackResponse = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(courseName)}&limit=1&addressdetails=1`);
               const fallbackData = await fallbackResponse.json();
                if (fallbackData && fallbackData.length > 0) {
                   const lat = parseFloat(fallbackData[0].lat);
                   const lon = parseFloat(fallbackData[0].lon);
+                  
+                  if (fallbackData[0].address && fallbackData[0].address.country) {
+                      const detected = fallbackData[0].address.country;
+                      const match = COUNTRIES.find(c => c.toLowerCase() === detected.toLowerCase());
+                      setCountry(match || detected);
+                  }
+
                   setMapCenter([lat, lon]);
                   setStep('map');
                } else {
@@ -203,6 +223,7 @@ const CourseEditor = () => {
     const newCourse: GolfCourse = {
         id: existingId || crypto.randomUUID(),
         name: courseName,
+        country: country || undefined,
         holes: holes,
         isCustom: true,
         createdAt: existingCourse?.createdAt || new Date().toLocaleDateString()
@@ -218,6 +239,7 @@ const CourseEditor = () => {
       const newCourse: GolfCourse = {
         id: existingId || crypto.randomUUID(),
         name: courseName,
+        country: country || undefined,
         holes: holes,
         isCustom: true,
         createdAt: existingCourse?.createdAt || new Date().toLocaleDateString()
@@ -331,6 +353,25 @@ const CourseEditor = () => {
                       />
                   </div>
 
+                  <div>
+                      <label className="block text-gray-400 text-sm font-bold mb-2">Country</label>
+                      <div className="relative">
+                          <select 
+                            value={country} 
+                            onChange={(e) => setCountry(e.target.value)}
+                            className="w-full bg-gray-800 border border-gray-700 p-4 rounded-xl text-white focus:border-green-500 outline-none appearance-none"
+                          >
+                            <option value="">Select Country (Optional)</option>
+                            {COUNTRIES.map(c => (
+                                <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                              <Globe size={16} className="text-gray-500"/>
+                          </div>
+                      </div>
+                  </div>
+
                   <button 
                     onClick={handleSearch}
                     disabled={isSearching || !courseName.trim()}
@@ -342,7 +383,7 @@ const CourseEditor = () => {
 
                   <div className="bg-gray-800/50 p-4 rounded-xl border border-dashed border-gray-700">
                       <p className="text-sm text-gray-400">
-                          Tip: Search for the course name to automatically fly the map to that location. You can then refine the Tee and Green positions.
+                          Tip: Entering a Country and searching for the course name will help auto-locate it on the map.
                       </p>
                   </div>
               </div>

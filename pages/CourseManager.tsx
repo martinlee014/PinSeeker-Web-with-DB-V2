@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { StorageService } from '../services/storage';
 import { CloudService } from '../services/supabase';
 import { GolfCourse } from '../types';
-import { ChevronLeft, Plus, Map, Trash2, Edit, Cloud, Download, Search, Loader2, UploadCloud, CheckCircle, AlertTriangle } from 'lucide-react';
+import { COUNTRIES } from '../constants';
+import { ChevronLeft, Plus, Map, Trash2, Edit, Cloud, Download, Search, Loader2, UploadCloud, CheckCircle, AlertTriangle, RefreshCw, Globe } from 'lucide-react';
 
 const CourseManager = () => {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ const CourseManager = () => {
   // Online State
   const [onlineCourses, setOnlineCourses] = useState<GolfCourse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('All');
   const [isSearching, setIsSearching] = useState(false);
   const [isUploading, setIsUploading] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -29,7 +31,7 @@ const CourseManager = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this course from local storage?")) {
+    if (confirm("Are you sure you want to delete this course from your device?")) {
         StorageService.deleteCustomCourse(id);
         loadLocalCourses();
     }
@@ -40,14 +42,12 @@ const CourseManager = () => {
   };
 
   const handleSearch = async () => {
-      if (!searchQuery.trim()) return;
+      // Allow searching empty string to "Show All" or "Recent"
       setIsSearching(true);
       try {
-          const results = await CloudService.searchCourses(searchQuery);
+          // Pass selected country filter (or 'All' which Service handles as null)
+          const results = await CloudService.searchCourses(searchQuery, selectedCountry);
           setOnlineCourses(results);
-          if (results.length === 0) {
-              // Optional: Show "No results" toast could go here
-          }
       } catch (e: any) {
           alert(e.message || "Failed to connect to course database.");
       } finally {
@@ -58,44 +58,49 @@ const CourseManager = () => {
   const handleDownload = async (course: GolfCourse) => {
       setDownloadingId(course.id);
       
-      // Simulate network interaction UI feel
       setTimeout(() => {
-          // Check if already exists locally
-          const exists = localCourses.find(c => c.name === course.name);
+          // Check if already exists locally by Name
+          const exists = localCourses.find(c => c.name.toLowerCase() === course.name.toLowerCase());
+          
           if (exists) {
-              alert(`You already have a course named "${course.name}".`);
-              setDownloadingId(null);
-              return;
+              if(!confirm(`You already have a course named "${course.name}". Do you want to download a duplicate copy?`)) {
+                  setDownloadingId(null);
+                  return;
+              }
           }
 
           const courseToSave = {
               ...course,
-              isCustom: true, // Treat downloaded courses as custom so they appear in list
+              isCustom: true, // Treat downloaded courses as custom so they appear in 'My Courses'
               isCloud: false  // Once downloaded, it acts local
           };
           
-          // Generate a new local ID to prevent conflict with Cloud UUID
+          // Generate a new local ID to ensure it functions as a distinct local entity
           courseToSave.id = crypto.randomUUID();
 
           StorageService.saveCustomCourse(courseToSave);
           loadLocalCourses();
           setDownloadingId(null);
-          // Auto switch tab to show user
-          if(confirm("Download complete! Switch to 'My Courses' to view it?")) {
+          
+          if(confirm(`"${course.name}" downloaded! Go to 'My Courses' to play it?`)) {
               setActiveTab('local');
           }
       }, 500);
   };
 
   const handleUpload = async (course: GolfCourse) => {
-      if (!confirm(`Submit "${course.name}" to the global database? It will be reviewed by admins.`)) return;
+      if (!confirm(`Upload "${course.name}" to the cloud? \n\nYou can then download it on your other devices.`)) return;
       
       setIsUploading(course.id);
       const res = await CloudService.uploadCourse(course);
       setIsUploading(null);
 
       if (res.success) {
-          alert("Course submitted successfully! It is now 'Pending Approval' and will appear online once an admin approves it.");
+          alert("Success! Your course is now in the Global Library.\n\nSwitch to the 'Global Library' tab on your other device to search and download it.");
+          // Optional: switch to online tab and search for it to prove it's there
+          setSearchQuery(course.name);
+          setActiveTab('online');
+          handleSearch();
       } else {
           alert("Upload failed: " + res.message);
       }
@@ -134,35 +139,38 @@ const CourseManager = () => {
                 {localCourses.length === 0 ? (
                     <div className="text-center py-10 text-gray-500 bg-gray-800/30 rounded-xl border border-dashed border-gray-700">
                         <Map size={48} className="mx-auto mb-3 opacity-20" />
-                        <p className="font-bold">No custom courses yet.</p>
-                        <p className="text-xs mt-2">Create one or download from library.</p>
+                        <p className="font-bold">No custom courses found.</p>
+                        <p className="text-xs mt-2">Create one or download from the Global Library.</p>
                     </div>
                 ) : (
                     localCourses.map(c => (
                         <div key={c.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center group">
                             <div className="flex-1 min-w-0 pr-4">
                                 <div className="font-bold text-white text-lg truncate">{c.name}</div>
-                                <div className="text-xs text-gray-500">{c.holes.filter(h => h.tee.lat !== 0).length} Holes • {c.createdAt}</div>
+                                <div className="text-xs text-gray-500 flex items-center gap-1">
+                                    {c.country && <span className="text-blue-400 font-bold">{c.country} •</span>}
+                                    <span>{c.holes.filter(h => h.tee.lat !== 0).length} Holes</span>
+                                </div>
                             </div>
                             <div className="flex gap-2 shrink-0">
                                 <button 
                                     onClick={() => handleUpload(c)}
                                     disabled={isUploading === c.id}
-                                    className="p-2 bg-blue-900/20 text-blue-400 rounded-lg hover:bg-blue-900/40 disabled:opacity-50"
+                                    className="p-2 bg-blue-900/20 text-blue-400 rounded-lg hover:bg-blue-900/40 disabled:opacity-50 transition-colors"
                                     title="Upload to Cloud"
                                 >
                                      {isUploading === c.id ? <Loader2 size={16} className="animate-spin"/> : <UploadCloud size={16} />}
                                 </button>
                                 <button 
                                     onClick={() => handleEdit(c)}
-                                    className="p-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600"
+                                    className="p-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-colors"
                                     title="Edit Local"
                                 >
                                      <Edit size={16} /> 
                                 </button>
                                 <button 
                                     onClick={() => handleDelete(c.id)}
-                                    className="p-2 bg-red-900/20 text-red-400 rounded-lg hover:bg-red-900/40"
+                                    className="p-2 bg-red-900/20 text-red-400 rounded-lg hover:bg-red-900/40 transition-colors"
                                     title="Delete"
                                 >
                                     <Trash2 size={16} />
@@ -171,64 +179,92 @@ const CourseManager = () => {
                         </div>
                     ))
                 )}
+                
+                <div className="text-center text-xs text-gray-600 mt-4 px-8">
+                    Tap the Cloud icon <UploadCloud size={10} className="inline"/> to upload your course. Then open this app on another device to download it.
+                </div>
             </>
         )}
 
         {/* === ONLINE TAB === */}
         {activeTab === 'online' && (
             <>
-                <div className="flex gap-2 mb-4">
-                    <input 
-                        type="text" 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                        placeholder="Search global courses..."
-                        className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none"
-                    />
-                    <button 
-                        onClick={handleSearch} 
-                        disabled={isSearching}
-                        className="bg-blue-600 text-white px-4 rounded-xl flex items-center justify-center disabled:opacity-50"
-                    >
-                        {isSearching ? <Loader2 className="animate-spin" /> : <Search />}
-                    </button>
+                <div className="flex flex-col gap-3 mb-4">
+                    {/* Country Filter */}
+                    <div className="relative">
+                        <select 
+                            value={selectedCountry}
+                            onChange={(e) => setSelectedCountry(e.target.value)}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pl-10 text-white focus:border-blue-500 outline-none appearance-none font-bold text-sm"
+                        >
+                            <option value="All">All Countries (Global)</option>
+                            <option disabled>──────────</option>
+                            {COUNTRIES.map(c => (
+                                <option key={c} value={c}>{c}</option>
+                            ))}
+                        </select>
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                            <Globe size={18} />
+                        </div>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="flex gap-2">
+                        <input 
+                            type="text" 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            placeholder="Search course name..."
+                            className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none"
+                        />
+                        <button 
+                            onClick={handleSearch} 
+                            disabled={isSearching}
+                            className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl flex items-center justify-center disabled:opacity-50 transition-colors"
+                        >
+                            {isSearching ? <Loader2 className="animate-spin" /> : <Search />}
+                        </button>
+                    </div>
                 </div>
 
                 {onlineCourses.length === 0 && !isSearching && (
                     <div className="text-center py-10 text-gray-500">
                         <Cloud size={48} className="mx-auto mb-3 opacity-20" />
-                        <p>{searchQuery ? "No courses found." : "Search to find verified courses."}</p>
+                        <p>{searchQuery ? "No courses found." : "Filter by country & search to download."}</p>
                     </div>
                 )}
 
                 {onlineCourses.map(c => {
-                    const isDownloaded = localCourses.some(lc => lc.name === c.name);
+                    // Check if we already have this course (by Name matching)
+                    const isDownloaded = localCourses.some(lc => lc.name.toLowerCase() === c.name.toLowerCase());
                     
                     return (
                         <div key={c.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
                             <div className="flex-1 min-w-0 pr-4">
                                 <div className="font-bold text-white text-lg truncate">{c.name}</div>
-                                <div className="text-xs text-gray-500 flex items-center gap-2">
-                                    <span>{c.holes.length} Holes</span>
-                                    <span className="bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
-                                        <CheckCircle size={10} /> OFFICIAL
-                                    </span>
+                                <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
+                                    {c.country && <span className="text-blue-400 font-bold">{c.country} •</span>}
+                                    <span>{c.holes?.length || 18} Holes</span>
+                                    {c.createdAt && <span className="opacity-70">• {new Date(c.createdAt).toLocaleDateString()}</span>}
                                 </div>
                             </div>
                             <div className="shrink-0">
                                 {isDownloaded ? (
-                                    <button disabled className="p-3 bg-green-900/20 text-green-500 rounded-xl flex items-center gap-2 opacity-70">
-                                        <CheckCircle size={18} /> <span className="text-xs font-bold">Added</span>
+                                    <button 
+                                        onClick={() => handleDownload(c)}
+                                        className="p-3 bg-gray-700 text-green-400 rounded-xl flex items-center gap-2 opacity-80 hover:opacity-100 hover:bg-gray-600 transition-colors"
+                                    >
+                                        <RefreshCw size={18} /> <span className="text-xs font-bold hidden sm:inline">Update</span>
                                     </button>
                                 ) : (
                                     <button 
                                         onClick={() => handleDownload(c)}
                                         disabled={downloadingId === c.id}
-                                        className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center gap-2 shadow-lg shadow-blue-900/20 disabled:opacity-50"
+                                        className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center gap-2 shadow-lg shadow-blue-900/20 disabled:opacity-50 transition-colors"
                                     >
                                         {downloadingId === c.id ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-                                        <span className="text-xs font-bold">Download</span>
+                                        <span className="text-xs font-bold hidden sm:inline">Download</span>
                                     </button>
                                 )}
                             </div>

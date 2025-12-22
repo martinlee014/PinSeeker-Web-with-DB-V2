@@ -25,10 +25,11 @@ export interface GolfHole {
 export interface GolfCourse {
   id: string;
   name: string;
+  country?: string; // Added for global filtering
   holes: GolfHole[];
   createdAt?: string;
   isCustom?: boolean;
-  isCloud?: boolean; // New flag to distinguish cloud courses
+  isCloud?: boolean; 
 }
 
 export interface ShotRecord {
