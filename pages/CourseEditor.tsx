@@ -105,6 +105,23 @@ const EditorMapEvents = ({ mode, onSetPoint }: { mode: string | null, onSetPoint
 
 const MapUpdater = ({ center }: { center: [number, number] }) => {
     const map = useMap();
+    
+    // Fix for map not rendering correctly on first load due to container resize
+    useEffect(() => {
+        const resizeObserver = new ResizeObserver(() => {
+            map.invalidateSize();
+        });
+        resizeObserver.observe(map.getContainer());
+        
+        // Timeout backup to ensure it catches the transition
+        const timer = setTimeout(() => map.invalidateSize(), 250);
+
+        return () => {
+            clearTimeout(timer);
+            resizeObserver.disconnect();
+        };
+    }, [map]);
+
     useEffect(() => {
         map.setView(center, 18, { animate: true }); 
     }, [center, map]);

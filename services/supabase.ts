@@ -1,33 +1,32 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { GolfCourse } from '../types';
 
 // ---------------------------------------------------------
 // CONFIGURATION
 // ---------------------------------------------------------
 
-const getEnv = () => {
+// Hardcoded Credentials as requested
+const SUPABASE_URL = 'https://ezvaynhdeygjpvuqvkbg.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_4SIUpiYqAXbR8Zdls6RN1w_2MTTLKOB';
+
+// Singleton client instance
+let clientInstance: SupabaseClient | null = null;
+
+const getClient = () => {
+    if (clientInstance) return clientInstance;
+
     try {
-        // @ts-ignore
-        return (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
+        clientInstance = createClient(SUPABASE_URL, SUPABASE_KEY);
+        return clientInstance;
     } catch (e) {
-        return {};
+        console.error("Failed to initialize Supabase client", e);
+        return null;
     }
 };
 
-const env = getEnv();
-
-// Use environment variables from Vercel/Local .env
-const SUPABASE_URL = env.VITE_SUPABASE_URL || ''; 
-const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY || '';
-
-// Initialize client only if keys allow it
-export const supabase = createClient(
-    SUPABASE_URL || 'https://placeholder.supabase.co', 
-    SUPABASE_ANON_KEY || 'placeholder'
-);
-
-const isConfigured = () => {
-    return SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY.length > 0;
+// Reset function (kept for compatibility, though less needed with hardcoded creds)
+export const resetSupabaseClient = () => {
+    clientInstance = null;
 };
 
 export const CloudService = {
@@ -35,9 +34,10 @@ export const CloudService = {
    * Search for published courses in the cloud
    */
   searchCourses: async (query: string, country?: string): Promise<GolfCourse[]> => {
-    if (!isConfigured()) {
-        console.warn("Supabase credentials missing.");
-        throw new Error("Cloud service not configured. Please check Vercel environment variables.");
+    const supabase = getClient();
+    
+    if (!supabase) {
+        throw new Error("Cloud service could not be initialized.");
     }
 
     // Build query
@@ -66,20 +66,32 @@ export const CloudService = {
       id: row.id,      // Override with Cloud UUID
       name: row.name,  // Ensure top-level name matches
       isCloud: true,   // Flag to indicate source
-      isCustom: false  // Cloud courses are read-only online
+      isCustom: false, // Cloud courses are read-only online
+      author: row.data.author // Include author info if available
     }));
   },
 
   /**
    * Submit a local course to the cloud
    */
-  uploadCourse: async (course: GolfCourse): Promise<{ success: boolean; message?: string }> => {
-    if (!isConfigured()) {
-        return { success: false, message: "Cloud service not configured." };
+  uploadCourse: async (course: GolfCourse, username: string): Promise<{ success: boolean; message?: string }> => {
+    const supabase = getClient();
+
+    if (!supabase) {
+        return { success: false, message: "Cloud service not available." };
+    }
+
+    if (!username) {
+        return { success: false, message: "User not identified. Please login again." };
     }
 
     // 1. Prepare payload: Remove local flags before uploading
-    const coursePayload = { ...course };
+    //    Add the 'author' tag to the data payload
+    const coursePayload = { 
+        ...course,
+        author: username // Tag the data with the username
+    };
+    
     delete (coursePayload as any).isCloud;
     delete (coursePayload as any).isCustom;
     delete (coursePayload as any).id; // Let DB generate ID
@@ -89,7 +101,7 @@ export const CloudService = {
       .from('courses')
       .insert({
         name: course.name,
-        data: coursePayload, // Store full structure in JSONB
+        data: coursePayload, // Store full structure in JSONB including author
         status: 'published'
       });
 

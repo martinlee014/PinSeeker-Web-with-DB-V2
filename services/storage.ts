@@ -1,3 +1,4 @@
+
 import { RoundHistory, ClubStats, GolfCourse, MapAnnotation } from "../types";
 import { DEFAULT_BAG, DUVENHOF_COURSE } from "../constants";
 
@@ -8,6 +9,7 @@ const KEY_CUSTOM_COURSES = 'pinseeker_custom_courses';
 const KEY_ANNOTATIONS = 'pinseeker_map_annotations';
 const KEY_HAS_SEEN_ONBOARDING = 'pinseeker_has_seen_v793_onboarding';
 const KEY_HDCP = 'pinseeker_user_hdcp';
+const KEY_CLOUD_CONFIG = 'pinseeker_cloud_config';
 
 export const StorageService = {
   getCurrentUser: (): string | null => {
@@ -147,5 +149,15 @@ export const StorageService = {
   
   clearTempState: (username: string) => {
     localStorage.removeItem(`temp_game_${username}`);
+  },
+
+  // --- Cloud Config ---
+  getCloudConfig: (): { url: string, key: string } | null => {
+    const data = localStorage.getItem(KEY_CLOUD_CONFIG);
+    return data ? JSON.parse(data) : null;
+  },
+
+  saveCloudConfig: (url: string, key: string) => {
+    localStorage.setItem(KEY_CLOUD_CONFIG, JSON.stringify({ url, key }));
   }
 };

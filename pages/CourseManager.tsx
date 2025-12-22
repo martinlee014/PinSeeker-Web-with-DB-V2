@@ -1,14 +1,16 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StorageService } from '../services/storage';
 import { CloudService } from '../services/supabase';
+import { AppContext } from '../App';
 import { GolfCourse } from '../types';
 import { COUNTRIES } from '../constants';
 import { ChevronLeft, Plus, Map, Trash2, Edit, Cloud, Download, Search, Loader2, UploadCloud, CheckCircle, AlertTriangle, RefreshCw, Globe } from 'lucide-react';
 
 const CourseManager = () => {
   const navigate = useNavigate();
+  const { user } = useContext(AppContext);
   const [activeTab, setActiveTab] = useState<'local' | 'online'>('local');
   
   // Local State
@@ -89,10 +91,16 @@ const CourseManager = () => {
   };
 
   const handleUpload = async (course: GolfCourse) => {
-      if (!confirm(`Upload "${course.name}" to the cloud? \n\nYou can then download it on your other devices.`)) return;
+      if (!user) {
+          alert("You must be logged in to upload courses.");
+          return;
+      }
+
+      if (!confirm(`Upload "${course.name}" to the cloud as user "${user}"? \n\nYou can then download it on your other devices.`)) return;
       
       setIsUploading(course.id);
-      const res = await CloudService.uploadCourse(course);
+      // Pass the user (username) to the upload function
+      const res = await CloudService.uploadCourse(course, user);
       setIsUploading(null);
 
       if (res.success) {
@@ -238,6 +246,7 @@ const CourseManager = () => {
                 {onlineCourses.map(c => {
                     // Check if we already have this course (by Name matching)
                     const isDownloaded = localCourses.some(lc => lc.name.toLowerCase() === c.name.toLowerCase());
+                    const author = (c as any).author || 'Unknown';
                     
                     return (
                         <div key={c.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
@@ -246,7 +255,7 @@ const CourseManager = () => {
                                 <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
                                     {c.country && <span className="text-blue-400 font-bold">{c.country} •</span>}
                                     <span>{c.holes?.length || 18} Holes</span>
-                                    {c.createdAt && <span className="opacity-70">• {new Date(c.createdAt).toLocaleDateString()}</span>}
+                                    <span className="opacity-70">• By {author}</span>
                                 </div>
                             </div>
                             <div className="shrink-0">
