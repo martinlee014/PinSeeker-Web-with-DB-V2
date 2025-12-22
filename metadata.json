@@ -1,0 +1,7 @@
+{
+  "name": "PinSeeker Web with DB V2",
+  "description": "Professional Golf Analytics and Strategy Application providing satellite mapping, shot dispersion analysis, and round tracking.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
