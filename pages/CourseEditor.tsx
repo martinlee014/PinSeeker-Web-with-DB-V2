@@ -161,50 +161,70 @@ const CourseEditor = () => {
     }
   }, [existingCourse]);
 
+  // --- Enhanced Search Logic ---
   const handleSearch = async () => {
       if (!courseName.trim()) return;
       setIsSearching(true);
+
+      const countrySuffix = (country && country !== 'All') ? `, ${country}` : '';
+      
+      // We will try multiple query strategies to find a real golf course
+      const strategies = [
+          `Golf Club ${courseName}${countrySuffix}`, // Specific
+          `${courseName} Golf Course${countrySuffix}`, // Specific
+          `${courseName} Golf${countrySuffix}`, // Fuzzy
+          `${courseName}${countrySuffix}` // Fallback
+      ];
+
       try {
-          // Add addressdetails=1 to get country info
-          const query = `Golf Club ${courseName}`;
-          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&addressdetails=1`);
-          const data = await response.json();
-          
-          if (data && data.length > 0) {
-              const lat = parseFloat(data[0].lat);
-              const lon = parseFloat(data[0].lon);
-              
-              // Try to auto-detect country from search result
-              if (data[0].address && data[0].address.country) {
-                  // Normalize to match our list if possible, otherwise use what API returned
-                  const detected = data[0].address.country;
+          let foundLocation = null;
+
+          // Try strategies sequentially
+          for (const query of strategies) {
+              // limit=5 to get candidates, addressdetails=1 to find country
+              const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`;
+              const res = await fetch(url);
+              const results = await res.json();
+
+              if (results && results.length > 0) {
+                  // FILTERING: Look for actual golf courses first
+                  // Nominatim tags: class="leisure" type="golf_course" OR class="sport" type="golf"
+                  const bestMatch = results.find((item: any) => 
+                      item.type === 'golf_course' || 
+                      item.class === 'leisure' ||
+                      item.display_name.toLowerCase().includes('golf')
+                  );
+
+                  if (bestMatch) {
+                      foundLocation = bestMatch;
+                      break; // Found a high quality match
+                  } else if (!foundLocation) {
+                      // Keep the first result as a backup if we find nothing better later
+                      foundLocation = results[0]; 
+                  }
+              }
+          }
+
+          if (foundLocation) {
+              const lat = parseFloat(foundLocation.lat);
+              const lon = parseFloat(foundLocation.lon);
+
+              // Auto-fill country if user hasn't selected one
+              if (!country && foundLocation.address && foundLocation.address.country) {
+                  const detected = foundLocation.address.country;
                   const match = COUNTRIES.find(c => c.toLowerCase() === detected.toLowerCase());
                   setCountry(match || detected);
               }
 
               setMapCenter([lat, lon]);
-              setStep('map'); 
+              setStep('map');
           } else {
-              const fallbackResponse = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(courseName)}&limit=1&addressdetails=1`);
-              const fallbackData = await fallbackResponse.json();
-               if (fallbackData && fallbackData.length > 0) {
-                  const lat = parseFloat(fallbackData[0].lat);
-                  const lon = parseFloat(fallbackData[0].lon);
-                  
-                  if (fallbackData[0].address && fallbackData[0].address.country) {
-                      const detected = fallbackData[0].address.country;
-                      const match = COUNTRIES.find(c => c.toLowerCase() === detected.toLowerCase());
-                      setCountry(match || detected);
-                  }
-
-                  setMapCenter([lat, lon]);
-                  setStep('map');
-               } else {
-                   alert("Location not found. Please try a more specific name or City.");
-               }
+              alert("Could not locate a golf course with that name. Try adding the City or Country.");
           }
+
       } catch (e) {
-          alert("Error searching for location.");
+          console.error(e);
+          alert("Network error during search.");
       } finally {
           setIsSearching(false);
       }
