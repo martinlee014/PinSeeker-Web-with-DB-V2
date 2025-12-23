@@ -12,20 +12,25 @@ PinSeeker is not just a GPS rangefinder. It is a precision tool built for golfer
 *   **Plan for the Miss**: Input your carry distance, side error, and depth error for every club.
 *   **Visual Confidence**: See your potential landing zones (blue ellipses) on the map. Avoid hazards by understanding your statistical spread, not just the perfect number.
 
-### 2. Advanced Rangefinder & Planning
+### 2. Cloud Ecosystem & Multi-User ☁️
+*   **Auto-Sync**: Your club data and round history are automatically backed up to the cloud.
+*   **Cross-Device**: Seamlessly switch between phone and tablet.
+*   **Single-Session**: Security protocols ensure your account is only active on one device at a time to prevent data conflicts.
+
+### 3. Advanced Rangefinder & Planning
 *   **Measurement Mode**: Built-in "My Location" snapping allows instant measurements from where you stand to any layup point or the pin.
 *   **Plays-Like Distance**: Integrated Visual Wind Compass calculates environmental adjustments automatically.
 
-### 3. Interactive Strategy Board
+### 4. Interactive Strategy Board
 *   **Coach's Eye**: Draw flight paths, mark hazards, or drop strategy pins directly on the satellite map.
 *   **Quick Editing**: Includes an Eraser tool and intuitive touch gestures to manage your notes on the fly.
 
-### 4. DIY Course Editor
+### 5. DIY Course Editor
 *   **Limitless Database**: Create high-precision maps for any course in the world using the built-in editor.
 *   **Precision Control**: Deep zoom (Level 22) and drag-and-drop markers allow for exact Tee and Green placement.
 *   **Cloud Library**: Share and download custom courses via Supabase integration.
 
-### 5. Seamless Tracking
+### 6. Seamless Tracking
 *   **Smart GPS**: One-tap shot recording and long-press Tee updates.
 *   **Replay Mode**: Review every shot of your round on the map after you finish, analyzing your performance hole-by-hole.
 
@@ -38,8 +43,10 @@ PinSeeker is not just a GPS rangefinder. It is a precision tool built for golfer
 To enable the Online Course Library features, you need to connect the app to Supabase.
 
 1.  Create a project at [Supabase.com](https://supabase.com).
-2.  Create a `.env` file in the root directory.
-3.  Add your credentials:
+2.  Open the SQL Editor in your Supabase dashboard.
+3.  **Run the Schema**: Copy the contents of the file **`supabase_schema_v2.sql`** (located in the root of this repository) and paste it into the SQL Editor. Click "Run" to initialize all tables and policies.
+4.  Create a `.env` file in the root directory (or use environment variables).
+5.  Add your credentials:
 
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co

@@ -1,12 +1,13 @@
 
-
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon, WifiOff } from 'lucide-react';
 import { StorageService } from './services/storage';
 import { CloudService } from './services/supabase';
 import { ClubStats } from './types';
+import { DEFAULT_BAG } from './constants';
 import Onboarding from './components/Onboarding';
+import { BagSyncConflictModal } from './components/Modals';
 
 // Pages
 import Login from './pages/Login';
@@ -28,7 +29,7 @@ export const AppContext = createContext<{
   hdcp: number;
   updateHdcp: (val: number) => void;
   bag: ClubStats[];
-  updateBag: (newBag: ClubStats[]) => void;
+  updateBag: (newBag: ClubStats[], skipCloudSync?: boolean) => void;
   showTutorial: boolean;
   setShowTutorial: (show: boolean) => void;
   isOnline: boolean;
@@ -118,6 +119,10 @@ const App = () => {
   const [showTutorial, setShowTutorial] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  // Sync Conflict State
+  const [showBagSyncModal, setShowBagSyncModal] = useState(false);
+  const [pendingCloudBag, setPendingCloudBag] = useState<ClubStats[] | null>(null);
+
   const heartbeatInterval = useRef<any>(null);
 
   // Initial Load
@@ -163,6 +168,16 @@ const App = () => {
       }
   };
 
+  const updateBag = (newBag: ClubStats[], skipCloudSync = false) => {
+    setBag(newBag);
+    StorageService.saveBag(newBag);
+    
+    // Cloud Sync
+    if (!skipCloudSync && user && isOnline) {
+        CloudService.syncBag(user, newBag);
+    }
+  };
+
   const login = async (username: string): Promise<boolean> => {
     try {
         // Attempt Cloud Login
@@ -175,19 +190,32 @@ const App = () => {
             setUser(username);
             setSessionId(res.sessionId);
 
-            // 2. Sync Down Data (Cloud -> Local)
-            if (res.bag && res.bag.length > 0) {
-                StorageService.saveBag(res.bag);
-                setBag(res.bag);
-            }
+            // 2. Handle History (Always pull history, simple merge/overwrite strategy)
             if (res.history && res.history.length > 0) {
                 StorageService.overwriteHistory(username, res.history);
             }
 
+            // 3. Handle Bag Data with Conflict Resolution
+            if (res.bag && res.bag.length > 0) {
+                const localBag = StorageService.getBag();
+                const isLocalDefault = JSON.stringify(localBag) === JSON.stringify(DEFAULT_BAG);
+                const isDifferent = JSON.stringify(localBag) !== JSON.stringify(res.bag);
+
+                if (isDifferent) {
+                    if (isLocalDefault) {
+                         // Case A: Local is untouched default -> Safe to overwrite with Cloud
+                         updateBag(res.bag, true); // true = don't sync back to cloud yet
+                    } else {
+                         // Case B: Conflict -> Local has changes, Cloud has diff data
+                         setPendingCloudBag(res.bag);
+                         setShowBagSyncModal(true);
+                    }
+                }
+            }
+
             return true;
         } else {
-            // Offline fallback or error (but allow login if just network issue?)
-            // For now, simple fallback
+            // Offline fallback
             StorageService.setCurrentUser(username);
             setUser(username);
             return true;
@@ -219,25 +247,35 @@ const App = () => {
       StorageService.saveHdcp(val);
   };
 
-  const updateBag = (newBag: ClubStats[]) => {
-    setBag(newBag);
-    StorageService.saveBag(newBag);
-    
-    // Cloud Sync
-    if (user && isOnline) {
-        CloudService.syncBag(user, newBag);
-    }
-  };
   
   const handleCloseTutorial = () => {
       setShowTutorial(false);
       StorageService.markOnboardingSeen();
   };
 
+  const handleResolveBagSync = (useCloud: boolean) => {
+      if (useCloud && pendingCloudBag) {
+          // User chose Cloud: Overwrite local
+          updateBag(pendingCloudBag, true); // Don't push back to cloud, it's the same
+      } else {
+          // User chose Local: Push local to cloud
+          // updateBag triggers sync automatically unless skipped
+          updateBag(bag, false);
+      }
+      setShowBagSyncModal(false);
+      setPendingCloudBag(null);
+  };
+
   return (
     <AppContext.Provider value={{ user, login, logout, useYards, toggleUnits, hdcp, updateHdcp, bag, updateBag, showTutorial, setShowTutorial, isOnline }}>
       <HashRouter>
         {showTutorial && <Onboarding onClose={handleCloseTutorial} />}
+        {showBagSyncModal && (
+            <BagSyncConflictModal 
+                onUseCloud={() => handleResolveBagSync(true)}
+                onUseLocal={() => handleResolveBagSync(false)}
+            />
+        )}
         <Routes>
           <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Login />} />
           <Route path="/dashboard" element={<ProtectedRoute user={user}><MainLayout><Dashboard /></MainLayout></ProtectedRoute>} />

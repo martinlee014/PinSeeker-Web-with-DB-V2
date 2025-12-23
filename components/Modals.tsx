@@ -1,5 +1,6 @@
+
 import { useState, ReactNode, ChangeEvent, useEffect } from 'react';
-import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap } from 'lucide-react';
+import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw } from 'lucide-react';
 import { ClubStats, GolfHole, HoleScore } from '../types';
 
 export const ModalOverlay = ({ children, onClose }: { children?: ReactNode, onClose?: () => void }) => (
@@ -19,6 +20,60 @@ export const ModalOverlay = ({ children, onClose }: { children?: ReactNode, onCl
     </div>
   </div>
 );
+
+export const BagSyncConflictModal = ({ 
+    cloudDate,
+    onUseCloud, 
+    onUseLocal 
+}: { 
+    cloudDate?: string, // Optional timestamp if available
+    onUseCloud: () => void, 
+    onUseLocal: () => void 
+}) => {
+    return (
+        <ModalOverlay>
+             <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/50 animate-pulse">
+                    <RefreshCw className="text-orange-400" size={32} />
+                </div>
+                <h2 className="text-xl font-bold text-white mb-2">Sync Conflict Detected</h2>
+                <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                    We found a difference between the club data on this device and your cloud profile. Which one would you like to keep?
+                </p>
+                
+                <div className="space-y-3">
+                    <button 
+                        onClick={onUseCloud}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-xl flex items-center justify-between group transition-all border border-blue-500/50"
+                    >
+                        <div className="flex items-center gap-3">
+                            <Cloud size={20} className="text-blue-200" />
+                            <div className="text-left">
+                                <div className="font-bold text-sm">Download from Cloud</div>
+                                <div className="text-[10px] text-blue-200">Overwrite local data</div>
+                            </div>
+                        </div>
+                        <Check size={16} className="opacity-0 group-hover:opacity-100 transition-opacity"/>
+                    </button>
+
+                    <button 
+                        onClick={onUseLocal}
+                        className="w-full bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-xl flex items-center justify-between group transition-all border border-gray-700"
+                    >
+                         <div className="flex items-center gap-3">
+                            <Smartphone size={20} className="text-gray-400" />
+                            <div className="text-left">
+                                <div className="font-bold text-sm">Keep Local Data</div>
+                                <div className="text-[10px] text-gray-400">Upload to cloud</div>
+                            </div>
+                        </div>
+                         <Check size={16} className="opacity-0 group-hover:opacity-100 transition-opacity"/>
+                    </button>
+                </div>
+            </div>
+        </ModalOverlay>
+    );
+};
 
 export const HdcpInputModal = ({ 
     currentHdcp, 

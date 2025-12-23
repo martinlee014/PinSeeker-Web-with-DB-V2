@@ -34,6 +34,16 @@ const UserManual = () => {
         </p>
 
         <Section 
+          title="Cloud Profile & Sync (Updated)"
+          items={[
+            '**Login:** Enter a unique Username to access your personal data.',
+            '**Auto-Sync:** Your Club Data (Bag) and Round History are automatically backed up to the cloud.',
+            '**Conflict Resolution:** If you make changes offline or on another device, PinSeeker will detect the difference upon login. You will be asked to either "Download Cloud Data" (overwrite local) or "Keep Local Data" (update cloud).',
+            '**Security:** PinSeeker enforces a "Single Device" policy. Logging in on a new device will automatically log out previous sessions.'
+          ]}
+        />
+
+        <Section 
           title="HDCP & Skill Modeling (Auto-Bag)"
           items={[
             '**New:** If you are unsure of your exact dispersion data, tap the "HDCP" button on the Dashboard.',

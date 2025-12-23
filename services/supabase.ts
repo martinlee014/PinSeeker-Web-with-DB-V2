@@ -225,7 +225,7 @@ export const CloudService = {
               username: username, 
               bag_data: bag,
               updated_at: new Date().toISOString()
-          });
+          }, { onConflict: 'username' });
       
       if (error) console.error("Failed to sync bag:", error);
   },

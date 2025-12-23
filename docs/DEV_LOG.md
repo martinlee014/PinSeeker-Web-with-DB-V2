@@ -1,10 +1,33 @@
 
 # PinSeeker Web - Development Log
 
-## Version: V7.21.0 (Multi-User & Cloud Sync)
+## Version: V7.22.0 (Data Conflict Resolution)
 **Date:** 2024-06-09
 **Branch:** `main`
 **Status:** ✅ CURRENT
+
+### Features & Fixes
+- **Sync Conflict UI**:
+  - Implemented `BagSyncConflictModal` to handle discrepancies between local storage and cloud database upon login.
+  - Users can now choose to **Download Cloud Data** (overwrite local) or **Keep Local Data** (overwrite cloud).
+- **Database Integrity**:
+  - Fixed a critical bug in `syncBag` where `upsert` operations failed due to missing `onConflict` constraints on the `username` column.
+  - Optimized `App.tsx` login flow to defer cloud sync until after conflict resolution.
+
+## Version: V7.21.1 (Documentation Sync)
+**Date:** 2024-06-09
+**Branch:** `main`
+**Status:** ✅ ARCHIVED
+
+### Documentation Updates
+- **User Manual**: Added dedicated section for Cloud Profile & Sync features in `UserManual.tsx`.
+- **Whitepaper**: Updated Core Features to include Cloud Ecosystem and revised the Standard Operating Procedure (SOP) to reflect the new Login flow.
+- **Readme**: Updated highlights to mention Multi-User Cloud support.
+
+## Version: V7.21.0 (Multi-User & Cloud Sync)
+**Date:** 2024-06-09
+**Branch:** `main`
+**Status:** ✅ ARCHIVED
 
 ### Major Features
 - **Multi-User Architecture**:
