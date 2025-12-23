@@ -1,10 +1,26 @@
 
 # PinSeeker Web - Development Log
 
+## Version: V7.20.0 (Cloud Sync & AI Search)
+**Date:** 2024-06-08
+**Branch:** `main`
+**Status:** ✅ CURRENT
+
+### Features & Fixes
+- **Cloud Overwrite Logic**:
+  - Implemented logic to check if a course already exists in the cloud before uploading.
+  - Added a confirmation dialog allowing users to **Overwrite/Update** existing courses or create duplicates.
+  - Resolved `CourseManager` upload flow to support course maintenance.
+- **Smart Course Search (Editor)**:
+  - **AI Grounding**: Integrated Gemini API (`gemini-3-flash-preview`) with Google Search tools to find course coordinates via natural language (e.g., "Carton House O'Meara location").
+  - **Direct Coordinates**: Added support for pasting `Lat, Lng` directly into the search bar.
+  - **External Maps**: Added a "Find on Google Maps" button to help users locate obscure courses manually.
+- **Multi-Course Support**: Added UI hints for users creating complex facilities (27+ holes) to split them into separate 18/9 hole entries.
+
 ## Version: V7.19.0 (Codebase Refactoring & Schema)
 **Date:** 2024-06-07
 **Branch:** `refactor/map-icons`
-**Status:** ✅ CURRENT
+**Status:** ✅ ARCHIVED
 
 ### Architecture & Refactoring
 - **Component Decoupling**: Extracted all Leaflet map icon definitions and marker generation logic from `PlayRound.tsx` into a dedicated utility file `utils/mapIcons.ts`.
