@@ -1,3 +1,4 @@
+
 import { useContext, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppContext } from '../App';
@@ -111,7 +112,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-6 pb-20">
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-gray-400 text-sm font-medium">WELCOME BACK</h2>
@@ -126,18 +127,31 @@ const Dashboard = () => {
         </button>
       </div>
 
-      <button
-        onClick={handleStartClick}
-        className="w-full bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white p-6 rounded-2xl shadow-lg shadow-green-900/20 flex items-center justify-between group transition-all"
-      >
-        <div className="flex flex-col items-start">
-          <span className="font-bold text-xl">START NEW ROUND</span>
-          <span className="text-green-100 text-sm opacity-80">Select Course & Tee Off</span>
-        </div>
-        <div className="bg-white/20 p-2 rounded-full group-hover:bg-white/30 transition-colors">
-          <Plus size={24} />
-        </div>
-      </button>
+      <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleStartClick}
+            className="col-span-1 bg-gradient-to-br from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white p-5 rounded-2xl shadow-lg shadow-green-900/20 flex flex-col items-start justify-between group transition-all h-32"
+          >
+            <div className="bg-white/20 p-2 rounded-full mb-2">
+              <Plus size={20} />
+            </div>
+            <div className="flex flex-col items-start">
+              <span className="font-bold text-lg leading-tight">START<br/>ROUND</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate('/tournaments')}
+            className="col-span-1 bg-gradient-to-br from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white p-5 rounded-2xl shadow-lg shadow-blue-900/20 flex flex-col items-start justify-between group transition-all h-32"
+          >
+            <div className="bg-white/20 p-2 rounded-full mb-2">
+              <Trophy size={20} />
+            </div>
+            <div className="flex flex-col items-start">
+              <span className="font-bold text-lg leading-tight">JOIN<br/>EVENT</span>
+            </div>
+          </button>
+      </div>
 
       <div>
         <h3 className="text-gray-500 font-bold text-sm tracking-wider mb-3">RECENT ROUNDS</h3>
@@ -160,6 +174,7 @@ const Dashboard = () => {
                     <div className="flex items-center gap-2 text-white font-medium">
                       <MapPin size={14} className="text-green-500" />
                       {round.courseName}
+                      {round.tournamentId && <Trophy size={10} className="text-yellow-500 ml-1" />}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-500">
                       <Calendar size={12} />

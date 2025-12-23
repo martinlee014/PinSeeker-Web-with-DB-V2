@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useContext, useMemo, useRef, Fragment } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Polyline, Polygon, useMap } from 'react-leaflet';
@@ -261,6 +262,7 @@ const PlayRound = () => {
   const replayRound = location.state?.round as RoundHistory | undefined;
   const initialHoleIdx = location.state?.initialHoleIndex || 0;
   const passedCourse = location.state?.course as GolfCourse | undefined;
+  const tournamentId = location.state?.tournamentId as string | undefined;
 
   const isReplay = !!replayRound;
 
@@ -421,10 +423,11 @@ const PlayRound = () => {
         currentBallPos,
         scorecard,
         shots,
-        courseId: activeCourse.id
+        courseId: activeCourse.id,
+        tournamentId: tournamentId // Persist tournament context in temp state
       });
     }
-  }, [currentHoleIdx, shotNum, currentBallPos, scorecard, shots, isReplay, user, activeCourse]);
+  }, [currentHoleIdx, shotNum, currentBallPos, scorecard, shots, isReplay, user, activeCourse, tournamentId]);
 
   if (!hole) return <div className="p-10 text-white">Loading Hole Data...</div>;
 
@@ -678,21 +681,22 @@ const PlayRound = () => {
     
     // 1. Create Data
     const cardToSave = finalScorecard || scorecard;
-    const history = { 
+    const history: RoundHistory = { 
         id: crypto.randomUUID(), 
         date: new Date().toLocaleString(), 
         courseName: activeCourse.name, 
         scorecard: cardToSave, 
-        shots 
+        shots,
+        tournamentId: tournamentId // Attach tournament ID if present
     };
 
     // 2. Save Local
     StorageService.saveHistory(user, history);
     StorageService.clearTempState(user);
 
-    // 3. Sync to Cloud
+    // 3. Sync to Cloud (Pass tournament ID explicitly)
     if (isOnline) {
-        CloudService.syncRound(user, history);
+        CloudService.syncRound(user, history, tournamentId);
     }
 
     navigate('/summary', { state: { round: history } });

@@ -1,7 +1,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon, WifiOff } from 'lucide-react';
+import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon, WifiOff, Trophy } from 'lucide-react';
 import { StorageService } from './services/storage';
 import { CloudService } from './services/supabase';
 import { ClubStats } from './types';
@@ -19,6 +19,7 @@ import UserManual from './pages/UserManual';
 import ClubManagement from './pages/ClubManagement';
 import CourseManager from './pages/CourseManager';
 import CourseEditor from './pages/CourseEditor';
+import Tournaments from './pages/Tournaments';
 
 export const AppContext = createContext<{
   user: string | null;
@@ -82,6 +83,7 @@ const MainLayout = ({ children }: { children?: ReactNode }) => {
       {showChrome && (
         <nav className="flex justify-around items-center p-3 bg-gray-900 border-t border-gray-800 z-10 shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <NavItem icon={<User size={24} />} label="Dash" path="/dashboard" active={location.pathname === '/dashboard'} />
+          <NavItem icon={<Trophy size={24} />} label="Events" path="/tournaments" active={location.pathname === '/tournaments'} />
           <div className="relative -top-5">
              <button 
                onClick={() => navigate('/play')}
@@ -90,7 +92,7 @@ const MainLayout = ({ children }: { children?: ReactNode }) => {
                <Play fill="white" className="text-white ml-1" />
              </button>
           </div>
-          <NavItem icon={<SettingsIcon size={24} />} label="Settings" path="/settings" active={location.pathname === '/settings'} />
+          <NavItem icon={<SettingsIcon size={24} />} label="Settings" path="/settings" active={location.pathname.startsWith('/settings')} />
         </nav>
       )}
     </div>
@@ -279,6 +281,7 @@ const App = () => {
         <Routes>
           <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Login />} />
           <Route path="/dashboard" element={<ProtectedRoute user={user}><MainLayout><Dashboard /></MainLayout></ProtectedRoute>} />
+          <Route path="/tournaments" element={<ProtectedRoute user={user}><MainLayout><Tournaments /></MainLayout></ProtectedRoute>} />
           <Route path="/play" element={<ProtectedRoute user={user}><MainLayout><PlayRound /></MainLayout></ProtectedRoute>} />
           <Route path="/summary" element={<ProtectedRoute user={user}><MainLayout><RoundSummary /></MainLayout></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute user={user}><MainLayout><Settings /></MainLayout></ProtectedRoute>} />

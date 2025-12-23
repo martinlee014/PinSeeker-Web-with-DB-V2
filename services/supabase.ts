@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { GolfCourse, ClubStats, RoundHistory } from '../types';
+import { GolfCourse, ClubStats, RoundHistory, Tournament, LeaderboardEntry } from '../types';
 
 // ---------------------------------------------------------
 // CONFIGURATION
@@ -129,13 +129,127 @@ export const CloudService = {
   },
 
   // ---------------------------------------------------
-  // AUTH & SESSION MANAGEMENT (New)
+  // TOURNAMENT MANAGEMENT (New)
   // ---------------------------------------------------
 
-  /**
-   * Logs a user in, creating a profile if needed, and generating a unique session ID.
-   * This session ID allows us to enforce "single terminal access".
-   */
+  createTournament: async (name: string, course: GolfCourse, host: string): Promise<{ success: boolean, code?: string, error?: string }> => {
+      const supabase = getClient();
+      if (!supabase) return { success: false, error: "Offline" };
+
+      // Generate a simple 6 char code
+      const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+      const { error } = await supabase
+        .from('tournaments')
+        .insert({
+            name,
+            host_username: host,
+            course_id: course.id,
+            course_name: course.name,
+            join_code: joinCode
+        });
+
+      if (error) return { success: false, error: error.message };
+
+      // Auto-join host
+      await CloudService.joinTournament(joinCode, host);
+
+      return { success: true, code: joinCode };
+  },
+
+  joinTournament: async (code: string, username: string): Promise<{ success: boolean, error?: string }> => {
+      const supabase = getClient();
+      if (!supabase) return { success: false, error: "Offline" };
+
+      // 1. Get Tournament ID
+      const { data: tData, error: tError } = await supabase
+        .from('tournaments')
+        .select('id')
+        .eq('join_code', code)
+        .single();
+      
+      if (tError || !tData) return { success: false, error: "Invalid Code" };
+
+      // 2. Join
+      const { error: pError } = await supabase
+        .from('tournament_participants')
+        .upsert({
+            tournament_id: tData.id,
+            username: username
+        }, { onConflict: 'tournament_id,username' }); // Ignore if already joined
+
+      if (pError) return { success: false, error: pError.message };
+      return { success: true };
+  },
+
+  getMyTournaments: async (username: string): Promise<Tournament[]> => {
+      const supabase = getClient();
+      if (!supabase) return [];
+
+      // Get IDs where user is participant
+      const { data: pData } = await supabase
+        .from('tournament_participants')
+        .select('tournament_id')
+        .eq('username', username);
+      
+      if (!pData || pData.length === 0) return [];
+      
+      const ids = pData.map(p => p.tournament_id);
+
+      // Get Tournament Details
+      const { data: tData } = await supabase
+        .from('tournaments')
+        .select('*')
+        .in('id', ids)
+        .order('created_at', { ascending: false });
+
+      if (!tData) return [];
+
+      return tData.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          host: t.host_username,
+          courseId: t.course_id,
+          courseName: t.course_name,
+          joinCode: t.join_code,
+          createdAt: t.created_at,
+          status: t.status
+      }));
+  },
+
+  getTournamentLeaderboard: async (tournamentId: string): Promise<LeaderboardEntry[]> => {
+      const supabase = getClient();
+      if (!supabase) return [];
+
+      // Fetch rounds for this tournament
+      const { data } = await supabase
+        .from('user_rounds')
+        .select('*')
+        .eq('tournament_id', tournamentId);
+      
+      if (!data) return [];
+
+      // Process rounds into leaderboard format
+      
+      const entries: LeaderboardEntry[] = data.map((row: any) => {
+          const r: RoundHistory = row.round_data;
+          const score = r.scorecard.reduce((acc, h) => acc + h.shotsTaken + h.putts + h.penalties, 0);
+          return {
+              username: row.username,
+              totalScore: score,
+              thru: r.scorecard.length,
+              roundData: { ...r, player: row.username } // Inject player name for display
+          };
+      });
+
+      // Sort by Score (ASC)
+      return entries.sort((a, b) => a.totalScore - b.totalScore);
+  },
+
+  // ---------------------------------------------------
+  // AUTH & SESSION MANAGEMENT (Existing)
+  // ---------------------------------------------------
+
   loginAndCreateSession: async (username: string): Promise<{ 
       success: boolean; 
       sessionId?: string; 
@@ -186,10 +300,6 @@ export const CloudService = {
       return { success: true, sessionId: newSessionId, bag, history };
   },
 
-  /**
-   * Called periodically by the client to ensure the session is still valid.
-   * If current_session_id in DB differs from local, another device has logged in.
-   */
   validateSession: async (username: string, localSessionId: string): Promise<boolean> => {
       const supabase = getClient();
       if (!supabase) return true; // Fail open if offline
@@ -212,7 +322,7 @@ export const CloudService = {
   },
 
   // ---------------------------------------------------
-  // DATA SYNCING (New)
+  // DATA SYNCING (Existing)
   // ---------------------------------------------------
 
   syncBag: async (username: string, bag: ClubStats[]) => {
@@ -230,19 +340,25 @@ export const CloudService = {
       if (error) console.error("Failed to sync bag:", error);
   },
 
-  syncRound: async (username: string, round: RoundHistory) => {
+  syncRound: async (username: string, round: RoundHistory, tournamentId?: string) => {
       const supabase = getClient();
       if (!supabase) return;
 
-      const { error } = await supabase
-          .from('user_rounds')
-          .insert({
+      const payload: any = {
               username: username,
               course_name: round.courseName,
               scorecard: round.scorecard,
               shots: round.shots,
               round_data: round
-          });
+      };
+
+      if (tournamentId) {
+          payload.tournament_id = tournamentId;
+      }
+
+      const { error } = await supabase
+          .from('user_rounds')
+          .insert(payload);
       
       if (error) console.error("Failed to upload round:", error);
   }

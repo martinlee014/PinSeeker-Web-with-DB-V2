@@ -1,5 +1,4 @@
 
-
 export interface LatLng {
   lat: number;
   lng: number;
@@ -64,6 +63,8 @@ export interface RoundHistory {
   courseName: string;
   scorecard: HoleScore[];
   shots: ShotRecord[];
+  tournamentId?: string; // New: Link to a tournament
+  player?: string; // New: For leaderboards (to show who played)
 }
 
 export interface MapAnnotation {
@@ -85,9 +86,30 @@ export interface GameState {
   shots: ShotRecord[];
   isRoundActive: boolean;
   courseId?: string; 
+  tournamentId?: string; // New
 }
 
 export interface UserSession {
     username: string;
     sessionId: string;
+}
+
+// New Tournament Interfaces
+export interface Tournament {
+    id: string;
+    name: string;
+    host: string;
+    courseId: string;
+    courseName: string;
+    joinCode: string;
+    createdAt: string;
+    status: 'active' | 'completed';
+    playerCount?: number;
+}
+
+export interface LeaderboardEntry {
+    username: string;
+    totalScore: number;
+    thru: number;
+    roundData: RoundHistory;
 }
