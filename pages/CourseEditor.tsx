@@ -8,7 +8,7 @@ import { StorageService } from '../services/storage';
 import * as MathUtils from '../services/mathUtils';
 import { GolfCourse, GolfHole } from '../types';
 import { COUNTRIES } from '../constants';
-import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine, Globe, Layers, ExternalLink, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine, Globe, Layers, ExternalLink, AlertCircle, Navigation } from 'lucide-react';
 import { ModalOverlay } from '../components/Modals';
 
 // --- Icons Configuration ---
@@ -140,6 +140,10 @@ const CourseEditor = () => {
   const [existingId, setExistingId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   
+  // Search Selection State
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+
   const [holes, setHoles] = useState<GolfHole[]>(
       Array.from({ length: 18 }, (_, i) => ({
           number: i + 1,
@@ -202,9 +206,28 @@ const CourseEditor = () => {
       window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
   };
 
+  const handleSelectLocation = (loc: any) => {
+      const lat = parseFloat(loc.lat);
+      const lon = parseFloat(loc.lon);
+      
+      // Auto-detect country if not set
+      if (!country && loc.address && loc.address.country) {
+          const detected = loc.address.country;
+          const match = COUNTRIES.find(c => c.toLowerCase() === detected.toLowerCase());
+          if (match) setCountry(match);
+          else setCountry(detected);
+      }
+
+      setMapCenter([lat, lon]);
+      setStep('map');
+      setShowResultsModal(false);
+      setIsSearching(false);
+  };
+
   const handleSearch = async () => {
       if (!courseName.trim()) return;
       setIsSearching(true);
+      setSearchResults([]);
 
       const countrySuffix = (country && country !== 'All') ? `, ${country}` : '';
       const fullQuery = `${courseName}${countrySuffix}`;
@@ -222,7 +245,7 @@ const CourseEditor = () => {
           }
       }
 
-      // 2. Try Gemini AI Search with Grounding
+      // 2. Try Gemini AI Search with Grounding (Prioritized for "Main Course" requests)
       try {
           if (process.env.API_KEY) {
               const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -255,7 +278,7 @@ const CourseEditor = () => {
           console.warn("AI Search unavailable or failed, falling back to OSM", e);
       }
 
-      // 3. Fallback: Nominatim (OpenStreetMap)
+      // 3. Fallback: Nominatim (OpenStreetMap) with Multiple Result Selection
       const strategies = [
           `Golf Club ${courseName}${countrySuffix}`,
           `${courseName} Golf Course${countrySuffix}`,
@@ -264,44 +287,42 @@ const CourseEditor = () => {
       ];
 
       try {
-          let foundLocation = null;
-
           for (const query of strategies) {
-              const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`;
+              const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=10&addressdetails=1`;
               const res = await fetch(url);
               const results = await res.json();
 
               if (results && results.length > 0) {
-                  const bestMatch = results.find((item: any) => 
+                  // Filter for likely golf courses
+                  const candidates = results.filter((item: any) => 
                       item.type === 'golf_course' || 
                       item.class === 'leisure' ||
                       item.display_name.toLowerCase().includes('golf')
                   );
 
-                  if (bestMatch) {
-                      foundLocation = bestMatch;
-                      break; 
-                  } else if (!foundLocation) {
-                      foundLocation = results[0]; 
+                  if (candidates.length > 1) {
+                      // Found multiple matches, let user choose
+                      setSearchResults(candidates);
+                      setShowResultsModal(true);
+                      setIsSearching(false);
+                      return; 
+                  } else if (candidates.length === 1) {
+                      // Found exactly one good match
+                      handleSelectLocation(candidates[0]);
+                      return; 
+                  } else if (results.length > 0 && candidates.length === 0) {
+                      // Found results but none look like golf courses (maybe strict filter is too strict?)
+                      // Continue to next strategy or accept the first generic result if it's the last strategy
+                      if (query === strategies[strategies.length - 1]) {
+                          // Last resort: just take the first result even if it doesn't say "golf"
+                          handleSelectLocation(results[0]);
+                          return;
+                      }
                   }
               }
           }
 
-          if (foundLocation) {
-              const lat = parseFloat(foundLocation.lat);
-              const lon = parseFloat(foundLocation.lon);
-
-              if (!country && foundLocation.address && foundLocation.address.country) {
-                  const detected = foundLocation.address.country;
-                  const match = COUNTRIES.find(c => c.toLowerCase() === detected.toLowerCase());
-                  setCountry(match || detected);
-              }
-
-              setMapCenter([lat, lon]);
-              setStep('map');
-          } else {
-              alert("Could not locate course automatically.\n\nRECOMMENDED: Use the 'Find on Google Maps' button, copy the coordinates (e.g. 53.12, -6.45) and paste them into the Course Name box.");
-          }
+          alert("Could not locate course automatically.\n\nRECOMMENDED: Use the 'Find on Google Maps' button, copy the coordinates (e.g. 53.12, -6.45) and paste them into the Course Name box.");
 
       } catch (e) {
           console.error(e);
@@ -533,6 +554,36 @@ const CourseEditor = () => {
               >
                   {existingId ? 'Skip to Map Editor' : 'Skip Search (Map Manual)'}
               </button>
+
+              {/* Multiple Search Results Modal */}
+              {showResultsModal && (
+                  <ModalOverlay onClose={() => setShowResultsModal(false)}>
+                      <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900 shrink-0">
+                          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                              <Search size={18} className="text-blue-500"/> Select Location
+                          </h3>
+                          <button type="button" onClick={() => setShowResultsModal(false)}><X className="text-gray-400" /></button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-2 bg-gray-900 space-y-2">
+                          <p className="text-xs text-gray-500 px-2 py-1">Multiple results found. Please select the correct one:</p>
+                          {searchResults.map((result, idx) => (
+                              <button 
+                                  key={idx}
+                                  onClick={() => handleSelectLocation(result)}
+                                  className="w-full p-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-left border border-gray-700 flex items-start gap-3 transition-colors"
+                              >
+                                  <div className="bg-blue-900/30 p-2 rounded-lg text-blue-400 shrink-0 mt-0.5">
+                                      <Navigation size={16} />
+                                  </div>
+                                  <div>
+                                      <div className="text-sm font-bold text-white">{result.display_name.split(',')[0]}</div>
+                                      <div className="text-xs text-gray-500 line-clamp-2 mt-0.5">{result.display_name}</div>
+                                  </div>
+                              </button>
+                          ))}
+                      </div>
+                  </ModalOverlay>
+              )}
           </div>
       );
   }
