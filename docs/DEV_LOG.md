@@ -1,10 +1,21 @@
 
 # PinSeeker Web - Development Log
 
-## Version: V7.20.1 (Course Manager UX)
+## Version: V7.20.2 (Search Disambiguation)
 **Date:** 2024-06-08
 **Branch:** `main`
 **Status:** ✅ CURRENT
+
+### Features & Fixes
+- **Course Search Experience**:
+  - **Multi-Result Selection**: When using the "Search & Map" feature, if multiple location candidates are found (via OpenStreetMap), the app now presents a **Selection Modal** instead of automatically picking the first result.
+  - **UX Improvement**: Users can see the full address/display name of each candidate to ensure they are mapping the correct golf course.
+  - **Smart Data Filling**: Selecting a location from the list automatically populates the Country field based on the geocoded address data.
+
+## Version: V7.20.1 (Course Manager UX)
+**Date:** 2024-06-08
+**Branch:** `main`
+**Status:** ✅ ARCHIVED
 
 ### Features & Fixes
 - **Course Manager UX**:
