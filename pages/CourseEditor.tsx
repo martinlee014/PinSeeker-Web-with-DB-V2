@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useContext, Fragment, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents, Polyline, useMap } from 'react-leaflet';
@@ -9,7 +8,7 @@ import { StorageService } from '../services/storage';
 import * as MathUtils from '../services/mathUtils';
 import { GolfCourse, GolfHole } from '../types';
 import { COUNTRIES } from '../constants';
-import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine, Globe, Layers, ExternalLink } from 'lucide-react';
+import { ChevronLeft, Save, MapPin, Target, Search, Loader2, ArrowLeft, ArrowRight, Check, X, Edit3, Home, Plus, Maximize, ArrowDownToLine, ArrowUpToLine, ArrowLeftToLine, ArrowRightToLine, Globe, Layers, ExternalLink, AlertCircle } from 'lucide-react';
 import { ModalOverlay } from '../components/Modals';
 
 // --- Icons Configuration ---
@@ -107,16 +106,12 @@ const EditorMapEvents = ({ mode, onSetPoint }: { mode: string | null, onSetPoint
 const MapUpdater = ({ center }: { center: [number, number] }) => {
     const map = useMap();
     
-    // Fix for map not rendering correctly on first load due to container resize
     useEffect(() => {
         const resizeObserver = new ResizeObserver(() => {
             map.invalidateSize();
         });
         resizeObserver.observe(map.getContainer());
-        
-        // Timeout backup to ensure it catches the transition
         const timer = setTimeout(() => map.invalidateSize(), 250);
-
         return () => {
             clearTimeout(timer);
             resizeObserver.disconnect();
@@ -182,15 +177,12 @@ const CourseEditor = () => {
     }
   }, [existingCourse]);
 
-  // Adjust holes array when holeCount changes
   useEffect(() => {
       setHoles(prevHoles => {
           if (holeCount === prevHoles.length) return prevHoles;
-          
           if (holeCount === 9) {
               return prevHoles.slice(0, 9);
           } else {
-              // Expand from 9 to 18
               const newHoles = [...prevHoles];
               for (let i = prevHoles.length; i < 18; i++) {
                   newHoles.push({
@@ -210,7 +202,6 @@ const CourseEditor = () => {
       window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
   };
 
-  // --- Enhanced Search Logic ---
   const handleSearch = async () => {
       if (!courseName.trim()) return;
       setIsSearching(true);
@@ -219,7 +210,6 @@ const CourseEditor = () => {
       const fullQuery = `${courseName}${countrySuffix}`;
 
       // 1. Direct Coordinate Input Check (Lat, Lng)
-      // Regex allows negative numbers, decimals, and optional space
       const coordMatch = courseName.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/);
       if (coordMatch) {
           const lat = parseFloat(coordMatch[1]);
@@ -233,15 +223,12 @@ const CourseEditor = () => {
       }
 
       // 2. Try Gemini AI Search with Grounding
-      // This helps find obscure courses that OSM misses
       try {
-          // Use process.env.API_KEY as per guidelines. 
-          // If not configured, we gracefully fall back to Nominatim.
           if (process.env.API_KEY) {
               const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
               const response = await ai.models.generateContent({
                   model: 'gemini-3-flash-preview',
-                  contents: `Find the precise GPS latitude and longitude for the golf course: "${fullQuery}".`,
+                  contents: `Find the precise GPS latitude and longitude for the golf course: "${fullQuery}". If there are multiple courses, prefer the main 18-hole course.`,
                   config: {
                       tools: [{ googleSearch: {} }],
                       responseMimeType: "application/json",
@@ -270,10 +257,10 @@ const CourseEditor = () => {
 
       // 3. Fallback: Nominatim (OpenStreetMap)
       const strategies = [
-          `Golf Club ${courseName}${countrySuffix}`, // Specific
-          `${courseName} Golf Course${countrySuffix}`, // Specific
-          `${courseName} Golf${countrySuffix}`, // Fuzzy
-          `${courseName}${countrySuffix}` // Fallback
+          `Golf Club ${courseName}${countrySuffix}`,
+          `${courseName} Golf Course${countrySuffix}`,
+          `${courseName} Golf${countrySuffix}`,
+          `${courseName}${countrySuffix}`
       ];
 
       try {
@@ -313,7 +300,7 @@ const CourseEditor = () => {
               setMapCenter([lat, lon]);
               setStep('map');
           } else {
-              alert("Could not locate course automatically.\n\nTip: You can paste exact coordinates (Lat, Lng) into the Name box, or use the 'Map' button to find it on Google.");
+              alert("Could not locate course automatically.\n\nRECOMMENDED: Use the 'Find on Google Maps' button, copy the coordinates (e.g. 53.12, -6.45) and paste them into the Course Name box.");
           }
 
       } catch (e) {
@@ -446,7 +433,7 @@ const CourseEditor = () => {
   if (step === 'info') {
       return (
           <div className="p-6 bg-gray-900 min-h-screen text-white flex flex-col">
-              <div className="flex items-center gap-4 mb-8">
+              <div className="flex items-center gap-4 mb-6">
                 <button onClick={() => navigate('/settings/courses')} className="p-2 bg-gray-800 rounded-lg">
                     <ChevronLeft />
                 </button>
@@ -454,27 +441,42 @@ const CourseEditor = () => {
                 <h1 className="text-2xl font-bold">{existingId ? 'Edit Course' : 'New Course'}</h1>
               </div>
 
+              <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl mb-6">
+                  <div className="flex items-start gap-3">
+                      <AlertCircle className="text-blue-400 shrink-0 mt-0.5" size={20} />
+                      <div>
+                          <h3 className="text-sm font-bold text-blue-200 mb-1">How to find accurate locations:</h3>
+                          <ol className="text-xs text-blue-300 space-y-2 list-decimal ml-4">
+                              <li>Tap <strong>Find on Google Maps</strong> below.</li>
+                              <li>Find your course and long-press on the map to drop a pin.</li>
+                              <li>Copy the coordinates (e.g. <code>53.38, -6.55</code>) from the search bar or info card.</li>
+                              <li>Paste them into the box below.</li>
+                          </ol>
+                      </div>
+                  </div>
+              </div>
+
               <div className="space-y-6">
                   <div>
                       <div className="flex justify-between items-end mb-2">
-                          <label className="block text-gray-400 text-sm font-bold">Course Name or Coords</label>
+                          <label className="block text-gray-400 text-sm font-bold">Course Name or Coordinates</label>
                           <button 
                             onClick={openGoogleMaps}
-                            className="text-[10px] text-blue-400 flex items-center gap-1 hover:text-blue-300"
+                            className="text-xs text-blue-400 font-bold flex items-center gap-1 hover:text-blue-300 bg-blue-900/30 px-2 py-1 rounded-lg"
                           >
-                              <ExternalLink size={10} /> Find on Google Maps
+                              <ExternalLink size={12} /> Find on Google Maps
                           </button>
                       </div>
                       <input 
                         type="text" 
-                        className="w-full bg-gray-800 border border-gray-700 p-4 rounded-xl text-white focus:border-green-500 outline-none"
+                        className="w-full bg-gray-800 border border-gray-700 p-4 rounded-xl text-white focus:border-green-500 outline-none placeholder:text-gray-600"
                         placeholder="e.g. Pebble Beach OR 36.56, -121.95"
                         value={courseName}
                         onChange={e => setCourseName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       />
-                      <p className="text-xs text-gray-500 mt-2">
-                          <strong>Tip:</strong> For facilities with multiple courses (27+ holes), please create separate entries (e.g. "Carton House - O'Meara" and "Carton House - Montgomerie").
+                      <p className="text-[10px] text-gray-500 mt-2">
+                          Tip: For 27-hole facilities, create separate courses (e.g. "Carton House - O'Meara").
                       </p>
                   </div>
 
@@ -518,18 +520,18 @@ const CourseEditor = () => {
                   <button 
                     onClick={handleSearch}
                     disabled={isSearching || !courseName.trim()}
-                    className="w-full bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/30 text-blue-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-lg shadow-blue-900/20"
                   >
                       {isSearching ? <Loader2 className="animate-spin" size={20}/> : <Search size={20} />}
-                      {courseName.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/) ? "Go to Coordinates" : "Search Location"}
+                      {courseName.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/) ? "Go to Coordinates" : "Search & Map"}
                   </button>
               </div>
 
               <button 
                 onClick={() => setStep('map')}
-                className="mt-auto w-full bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg"
+                className="mt-auto w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-4 rounded-xl border border-gray-700"
               >
-                  {existingId ? 'Continue Editing Map' : 'Start Mapping'}
+                  {existingId ? 'Skip to Map Editor' : 'Skip Search (Map Manual)'}
               </button>
           </div>
       );
