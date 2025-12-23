@@ -1,4 +1,5 @@
 
+
 export interface LatLng {
   lat: number;
   lng: number;
@@ -84,4 +85,9 @@ export interface GameState {
   shots: ShotRecord[];
   isRoundActive: boolean;
   courseId?: string; 
+}
+
+export interface UserSession {
+    username: string;
+    sessionId: string;
 }

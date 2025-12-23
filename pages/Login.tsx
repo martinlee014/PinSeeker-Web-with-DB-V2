@@ -1,14 +1,24 @@
+
+
 import { useState, useContext, FormEvent } from 'react';
 import { AppContext } from '../App';
+import { Loader2, Cloud } from 'lucide-react';
 
 const Login = () => {
   const { login } = useContext(AppContext);
   const [name, setName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     if (name.trim()) {
-      login(name.trim());
+      setIsLoading(true);
+      try {
+        await login(name.trim());
+        // Navigation is handled by App router redirection upon user state change
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -28,7 +38,9 @@ const Login = () => {
       <div className="bg-black/80 backdrop-blur-md p-8 rounded-2xl w-full max-w-sm mx-4 z-10 border border-gray-800 shadow-2xl">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-black tracking-[0.2em] text-white mb-2">PINSEEKER</h1>
-          <p className="text-green-400 text-sm font-medium uppercase tracking-widest">Professional Analytics</p>
+          <p className="text-green-400 text-sm font-medium uppercase tracking-widest flex items-center justify-center gap-2">
+            <Cloud size={14} /> Cloud Enabled
+          </p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -40,8 +52,9 @@ const Login = () => {
               id="username"
               type="text"
               required
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
-              placeholder="Enter Name"
+              disabled={isLoading}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors disabled:opacity-50"
+              placeholder="Enter User ID"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -49,10 +62,15 @@ const Login = () => {
 
           <button
             type="submit"
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-lg transition-all transform active:scale-95 shadow-lg shadow-green-900/20"
+            disabled={isLoading}
+            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-lg transition-all transform active:scale-95 shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100"
           >
-            ENTER CLUBHOUSE
+            {isLoading ? <Loader2 className="animate-spin" /> : "ENTER CLUBHOUSE"}
           </button>
+          
+          <p className="text-xs text-center text-gray-500">
+            Logging in on a new device will log out other sessions to prevent data conflicts.
+          </p>
         </form>
       </div>
     </div>

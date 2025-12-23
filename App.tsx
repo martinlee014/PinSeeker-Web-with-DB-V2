@@ -1,8 +1,10 @@
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon } from 'lucide-react';
+import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon, WifiOff } from 'lucide-react';
 import { StorageService } from './services/storage';
+import { CloudService } from './services/supabase';
 import { ClubStats } from './types';
 import Onboarding from './components/Onboarding';
 
@@ -19,7 +21,7 @@ import CourseEditor from './pages/CourseEditor';
 
 export const AppContext = createContext<{
   user: string | null;
-  login: (u: string) => void;
+  login: (u: string) => Promise<boolean>;
   logout: () => void;
   useYards: boolean;
   toggleUnits: () => void;
@@ -29,9 +31,10 @@ export const AppContext = createContext<{
   updateBag: (newBag: ClubStats[]) => void;
   showTutorial: boolean;
   setShowTutorial: (show: boolean) => void;
+  isOnline: boolean;
 }>({
   user: null,
-  login: () => {},
+  login: async () => false,
   logout: () => {},
   useYards: false,
   toggleUnits: () => {},
@@ -41,12 +44,13 @@ export const AppContext = createContext<{
   updateBag: () => {},
   showTutorial: false,
   setShowTutorial: () => {},
+  isOnline: true,
 });
 
 const MainLayout = ({ children }: { children?: ReactNode }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useContext(AppContext);
+  const { logout, isOnline } = useContext(AppContext);
 
   const isPlayMode = location.pathname.startsWith('/play');
   const isEditorMode = location.pathname.includes('/edit');
@@ -62,6 +66,7 @@ const MainLayout = ({ children }: { children?: ReactNode }) => {
           <div className="flex items-center gap-2" onClick={() => navigate('/dashboard')}>
             <MapIcon className="text-green-500" />
             <span className="font-bold text-xl tracking-wider text-white">PINSEEKER</span>
+            {!isOnline && <WifiOff size={16} className="text-red-500 animate-pulse ml-2" />}
           </div>
           <button onClick={logout} className="p-2 text-gray-400 hover:text-red-500">
             <LogOut size={20} />
@@ -106,26 +111,101 @@ const NavItem = ({ icon, label, path, active }: any) => {
 
 const App = () => {
   const [user, setUser] = useState<string | null>(StorageService.getCurrentUser());
+  const [sessionId, setSessionId] = useState<string | null>(StorageService.getSessionId());
   const [useYards, setUseYards] = useState<boolean>(StorageService.getUseYards());
   const [hdcp, setHdcp] = useState<number>(StorageService.getHdcp());
   const [bag, setBag] = useState<ClubStats[]>([]);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  const heartbeatInterval = useRef<any>(null);
+
+  // Initial Load
   useEffect(() => {
     setBag(StorageService.getBag());
     if (!StorageService.hasSeenOnboarding()) {
         setShowTutorial(true);
     }
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
-  const login = (username: string) => {
-    setUser(username);
-    StorageService.setCurrentUser(username);
+  // Heartbeat / Mutex Check
+  useEffect(() => {
+      if (user && sessionId) {
+          // Check immediately on mount
+          checkSession();
+          // Then every 30s
+          heartbeatInterval.current = setInterval(checkSession, 30000);
+      } else {
+          if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
+      }
+      return () => {
+          if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
+      };
+  }, [user, sessionId]);
+
+  const checkSession = async () => {
+      if (!user || !sessionId || !navigator.onLine) return;
+      
+      const isValid = await CloudService.validateSession(user, sessionId);
+      if (!isValid) {
+          alert("Security Alert:\nYou have logged in on another device.\n\nTo prevent data conflicts, this session has been terminated.");
+          logout();
+      }
+  };
+
+  const login = async (username: string): Promise<boolean> => {
+    try {
+        // Attempt Cloud Login
+        const res = await CloudService.loginAndCreateSession(username);
+        
+        if (res.success && res.sessionId) {
+            // 1. Set Session
+            StorageService.setCurrentUser(username);
+            StorageService.setSessionId(res.sessionId);
+            setUser(username);
+            setSessionId(res.sessionId);
+
+            // 2. Sync Down Data (Cloud -> Local)
+            if (res.bag && res.bag.length > 0) {
+                StorageService.saveBag(res.bag);
+                setBag(res.bag);
+            }
+            if (res.history && res.history.length > 0) {
+                StorageService.overwriteHistory(username, res.history);
+            }
+
+            return true;
+        } else {
+            // Offline fallback or error (but allow login if just network issue?)
+            // For now, simple fallback
+            StorageService.setCurrentUser(username);
+            setUser(username);
+            return true;
+        }
+    } catch (e) {
+        console.error("Login Error", e);
+        // Fallback for offline usage
+        StorageService.setCurrentUser(username);
+        setUser(username);
+        return true;
+    }
   };
 
   const logout = () => {
     setUser(null);
+    setSessionId(null);
     StorageService.clearCurrentUser();
+    if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
   };
 
   const toggleUnits = () => {
@@ -142,6 +222,11 @@ const App = () => {
   const updateBag = (newBag: ClubStats[]) => {
     setBag(newBag);
     StorageService.saveBag(newBag);
+    
+    // Cloud Sync
+    if (user && isOnline) {
+        CloudService.syncBag(user, newBag);
+    }
   };
   
   const handleCloseTutorial = () => {
@@ -150,7 +235,7 @@ const App = () => {
   };
 
   return (
-    <AppContext.Provider value={{ user, login, logout, useYards, toggleUnits, hdcp, updateHdcp, bag, updateBag, showTutorial, setShowTutorial }}>
+    <AppContext.Provider value={{ user, login, logout, useYards, toggleUnits, hdcp, updateHdcp, bag, updateBag, showTutorial, setShowTutorial, isOnline }}>
       <HashRouter>
         {showTutorial && <Onboarding onClose={handleCloseTutorial} />}
         <Routes>

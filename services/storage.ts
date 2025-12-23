@@ -1,8 +1,10 @@
 
+
 import { RoundHistory, ClubStats, GolfCourse, MapAnnotation } from "../types";
 import { DEFAULT_BAG, DUVENHOF_COURSE } from "../constants";
 
 const KEY_USER = 'pinseeker_current_user';
+const KEY_SESSION = 'pinseeker_session_id'; // New Session Key
 const KEY_SETTINGS_UNIT = 'pinseeker_unit_system';
 const KEY_CLUB_BAG = 'pinseeker_club_bag';
 const KEY_CUSTOM_COURSES = 'pinseeker_custom_courses';
@@ -22,6 +24,16 @@ export const StorageService = {
   
   clearCurrentUser: () => {
     localStorage.removeItem(KEY_USER);
+    localStorage.removeItem(KEY_SESSION);
+  },
+
+  // --- Session Management ---
+  getSessionId: (): string | null => {
+      return localStorage.getItem(KEY_SESSION);
+  },
+
+  setSessionId: (id: string) => {
+      localStorage.setItem(KEY_SESSION, id);
   },
 
   getUseYards: (): boolean => {
@@ -130,6 +142,11 @@ export const StorageService = {
     const existing: RoundHistory[] = existingStr ? JSON.parse(existingStr) : [];
     existing.unshift(history); // Add to top
     localStorage.setItem(key, JSON.stringify(existing));
+  },
+
+  overwriteHistory: (username: string, history: RoundHistory[]) => {
+    const key = `history_${username}`;
+    localStorage.setItem(key, JSON.stringify(history));
   },
 
   getHistory: (username: string): RoundHistory[] => {

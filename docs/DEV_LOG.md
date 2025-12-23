@@ -1,10 +1,27 @@
 
 # PinSeeker Web - Development Log
 
+## Version: V7.21.0 (Multi-User & Cloud Sync)
+**Date:** 2024-06-09
+**Branch:** `main`
+**Status:** ✅ CURRENT
+
+### Major Features
+- **Multi-User Architecture**:
+  - Implemented `UserSession` logic to support individual user profiles.
+  - **Single-Terminal Mutex**: Added logic to enforce single-device login. Logging in on a new device invalidates the session on previous devices (Heartbeat check).
+- **Cloud Synchronization (Supabase)**:
+  - **Profiles**: Stores user identity and active session tokens.
+  - **Club Bag Sync**: User's club distances and dispersion settings are now synced to the cloud and restored upon login.
+  - **Round History**: Finished rounds are automatically uploaded to the `user_rounds` table in Supabase.
+- **Login Flow**:
+  - Added a new `Login` page acting as the gateway.
+  - Integrated "Pull on Login" to restore user data (Bag & History) from the cloud immediately.
+
 ## Version: V7.20.2 (Search Disambiguation)
 **Date:** 2024-06-08
 **Branch:** `main`
-**Status:** ✅ CURRENT
+**Status:** ✅ ARCHIVED
 
 ### Features & Fixes
 - **Course Search Experience**:
