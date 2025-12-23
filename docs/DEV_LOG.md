@@ -1,10 +1,22 @@
 
 # PinSeeker Web - Development Log
 
-## Version: V7.20.0 (Cloud Sync & AI Search)
+## Version: V7.20.1 (Course Manager UX)
 **Date:** 2024-06-08
 **Branch:** `main`
 **Status:** ✅ CURRENT
+
+### Features & Fixes
+- **Course Manager UX**:
+  - Added a dedicated "Create Custom Course" button at the top of the "My Courses" tab for easier access (removed dependency on New Round flow).
+  - Clearer separation between managing local courses and downloading online ones.
+- **Build System**:
+  - Fixed dependency issue with `@google/genai` by using wildcard versioning to fetch the latest available package in the CI environment.
+
+## Version: V7.20.0 (Cloud Sync & AI Search)
+**Date:** 2024-06-08
+**Branch:** `main`
+**Status:** ✅ ARCHIVED
 
 ### Features & Fixes
 - **Cloud Overwrite Logic**:

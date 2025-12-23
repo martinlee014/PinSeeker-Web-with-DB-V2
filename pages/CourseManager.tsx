@@ -6,7 +6,7 @@ import { CloudService } from '../services/supabase';
 import { AppContext } from '../App';
 import { GolfCourse } from '../types';
 import { COUNTRIES } from '../constants';
-import { ChevronLeft, Plus, Map, Trash2, Edit, Cloud, Download, Search, Loader2, UploadCloud, CheckCircle, AlertTriangle, RefreshCw, Globe } from 'lucide-react';
+import { ChevronLeft, Plus, Map, Trash2, Edit, Cloud, Download, Search, Loader2, UploadCloud, RefreshCw, Globe } from 'lucide-react';
 
 const CourseManager = () => {
   const navigate = useNavigate();
