@@ -43,6 +43,10 @@ const CourseManager = () => {
       navigate('/settings/courses/edit', { state: { course } });
   };
 
+  const handleCreateNew = () => {
+      navigate('/settings/courses/edit');
+  };
+
   const handleSearch = async () => {
       // Allow searching empty string to "Show All" or "Recent"
       setIsSearching(true);
@@ -107,11 +111,6 @@ const CourseManager = () => {
 
           if (existingCloudId) {
               // Ask user for action
-              // Note: We use window.confirm sequence because standard browser alerts are blocking.
-              // In a real app, a custom modal is better, but this fits the constraint.
-              // We can't do complex UI logic inside this async flow easily without a custom modal component.
-              // For now, we assume simple Overwrite vs Cancel/New.
-              
               if (confirm(`A course named "${course.name}" by you already exists in the cloud.\n\nClick OK to OVERWRITE/UPDATE it.\nClick Cancel to Create a Duplicate Copy.`)) {
                   // Update existing
                   const res = await CloudService.updateCourse(existingCloudId, course, user);
@@ -162,7 +161,7 @@ const CourseManager = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-gray-800 p-1 rounded-xl mb-6">
+      <div className="flex bg-gray-800 p-1 rounded-xl mb-6 shrink-0">
           <button 
             onClick={() => setActiveTab('local')}
             className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'local' ? 'bg-gray-700 text-white shadow' : 'text-gray-500'}`}
@@ -182,11 +181,20 @@ const CourseManager = () => {
         {/* === LOCAL TAB === */}
         {activeTab === 'local' && (
             <>
+                {/* Explicit Create Button */}
+                <button
+                    onClick={handleCreateNew}
+                    className="w-full bg-gradient-to-r from-green-600 to-green-500 text-white p-4 rounded-xl shadow-lg mb-6 flex items-center justify-center gap-2 font-bold hover:brightness-110 transition-all active:scale-95"
+                >
+                    <Plus size={20} />
+                    <span>Create Custom Course</span>
+                </button>
+
                 {localCourses.length === 0 ? (
                     <div className="text-center py-10 text-gray-500 bg-gray-800/30 rounded-xl border border-dashed border-gray-700">
                         <Map size={48} className="mx-auto mb-3 opacity-20" />
-                        <p className="font-bold">No custom courses found.</p>
-                        <p className="text-xs mt-2">Create one or download from the Global Library.</p>
+                        <p className="font-bold">No custom courses yet.</p>
+                        <p className="text-xs mt-2">Tap the button above to map your home course.</p>
                     </div>
                 ) : (
                     localCourses.map(c => (
@@ -226,9 +234,11 @@ const CourseManager = () => {
                     ))
                 )}
                 
-                <div className="text-center text-xs text-gray-600 mt-4 px-8">
-                    Tap the Cloud icon <UploadCloud size={10} className="inline"/> to upload or update your course.
-                </div>
+                {localCourses.length > 0 && (
+                    <div className="text-center text-xs text-gray-600 mt-4 px-8">
+                        Courses are saved on this device. Tap <UploadCloud size={10} className="inline"/> to share them.
+                    </div>
+                )}
             </>
         )}
 
@@ -326,15 +336,6 @@ const CourseManager = () => {
         )}
 
       </div>
-
-      {activeTab === 'local' && (
-          <button 
-            onClick={() => navigate('/settings/courses/edit')}
-            className="fixed bottom-6 right-6 bg-green-600 text-white p-4 rounded-full shadow-xl shadow-green-900/50 hover:scale-105 transition-transform z-10"
-          >
-            <Plus size={24} />
-          </button>
-      )}
     </div>
   );
 };
