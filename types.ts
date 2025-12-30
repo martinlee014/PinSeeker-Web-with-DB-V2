@@ -1,4 +1,5 @@
 
+
 export interface LatLng {
   lat: number;
   lng: number;
@@ -131,4 +132,15 @@ export interface LeaderboardEntry {
     totalScore: number;
     thru: number;
     roundData: RoundHistory;
+}
+
+declare global {
+  interface AIStudio {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+  }
+
+  interface Window {
+    aistudio?: AIStudio;
+  }
 }
