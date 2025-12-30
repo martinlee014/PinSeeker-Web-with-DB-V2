@@ -8,7 +8,7 @@ import { DUVENHOF_COURSE } from '../constants';
 import { StorageService } from '../services/storage';
 import { CloudService } from '../services/supabase';
 import * as MathUtils from '../services/mathUtils';
-import { ClubStats, HoleScore, ShotRecord, RoundHistory, LatLng, GolfCourse, MapAnnotation } from '../types';
+import { ClubStats, HoleScore, ShotRecord, RoundHistory, LatLng, GolfCourse, MapAnnotation, TeeBox } from '../types';
 import ClubSelector from '../components/ClubSelector';
 import { ScoreModal, ShotConfirmModal, HoleSelectorModal, FullScorecardModal, ModalOverlay } from '../components/Modals';
 import { Flag, Wind, ChevronLeft, Grid, ListChecks, ArrowLeft, ArrowRight, ChevronDown, MapPin, Ruler, Trash2, PenTool, Type, Highlighter, X, Check, Eraser, Home, Signal, SignalHigh, SignalLow, SignalMedium, Footprints, PlayCircle, RotateCcw, Rocket, Satellite, Menu, MoreVertical, LayoutGrid, Loader2 } from 'lucide-react';
@@ -42,7 +42,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
     strokeLinejoin="round" 
     className={className}
   >
-    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
+    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
     <path d="M9 6V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
     <path d="M9 4l-2 2" />
     <path d="M15 4l2 2" />
@@ -52,6 +52,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
   </svg>
 );
 
+// ... (RotatedMapHandler remains the same) ...
 const RotatedMapHandler = ({ 
     rotation, 
     onLongPress,
@@ -217,6 +218,7 @@ const RotatedMapHandler = ({
   return null;
 };
 
+// ... (MapInitializer remains the same) ...
 const MapInitializer = ({ center, isReplay, pointsToFit }: { center: LatLng, isReplay: boolean, pointsToFit?: LatLng[] }) => {
     const map = useMap();
     useEffect(() => {
@@ -297,20 +299,44 @@ const PlayRound = () => {
   const [shots, setShots] = useState<ShotRecord[]>([]);
   const [scorecard, setScorecard] = useState<HoleScore[]>([]);
   
-  // Initialize currentBallPos safely based on the RESOLVED activeCourse
+  // TEE SELECTION STATE
+  const [selectedTee, setSelectedTee] = useState<TeeBox | null>(null);
+  const [showTeeSelect, setShowTeeSelect] = useState(!isReplay); // Show default if not replay
+
+  const hole = activeCourse.holes[currentHoleIdx];
+
+  // Logic to determine active tee box
+  const activeTee = useMemo(() => {
+     if (isReplay) return hole.tee; // Fallback for replays
+     if (selectedTee && hole.teeBoxes && hole.teeBoxes.length > 0) {
+         // Try to find the matching color/name for the current hole
+         const matchingTee = hole.teeBoxes.find(t => t.name === selectedTee.name) || hole.teeBoxes[0];
+         return matchingTee.location;
+     }
+     return hole.teeBoxes?.[0]?.location || hole.tee;
+  }, [selectedTee, hole, isReplay]);
+
+  // Logic to determine active par
+  const activePar = useMemo(() => {
+     if (selectedTee && hole.teeBoxes && hole.teeBoxes.length > 0) {
+         const matchingTee = hole.teeBoxes.find(t => t.name === selectedTee.name) || hole.teeBoxes[0];
+         return matchingTee.par || hole.par;
+     }
+     return hole.par;
+  }, [selectedTee, hole]);
+
   const [currentBallPos, setCurrentBallPos] = useState<LatLng>(() => {
       // 1. Try restore from temp state
       if (!isReplay && user) {
           const searchParams = new URLSearchParams(location.search);
           if (searchParams.get('restore') === 'true') {
               const saved = StorageService.getTempState(user);
-              if (saved && saved.currentBallPos) return saved.currentBallPos;
+              if (saved) {
+                   if (saved.currentBallPos) return saved.currentBallPos;
+              }
           }
       }
-      
-      // 2. Default to tee of the ACTIVE course (which is now correctly resolved above)
-      const h = activeCourse.holes[initialHoleIdx];
-      return h ? h.tee : { lat: 0, lng: 0 };
+      return { lat: 0, lng: 0 }; // Temporary, updated via effect once activeTee resolves
   });
 
   const [selectedClub, setSelectedClub] = useState<ClubStats>(bag[0] || { name: 'Driver', carry: 230, sideError: 45, depthError: 25 });
@@ -338,22 +364,13 @@ const PlayRound = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const watchIdRef = useRef<number | null>(null);
-  
-  // Menu State for collapsing icons
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  // New Tracking State
   const [isTrackingMode, setIsTrackingMode] = useState(false);
   const [trackingStartPos, setTrackingStartPos] = useState<LatLng | null>(null);
-
-  // Tee Off Long Press Logic
   const teePressTimer = useRef<any>(null);
   const [teeButtonText, setTeeButtonText] = useState("TEE OFF");
   const [isTeePressing, setIsTeePressing] = useState(false);
 
-  const hole = activeCourse.holes[currentHoleIdx];
-
-  // ... (useEffects remain mostly same, just checking activeCourse/hole) ...
   const drivingDist = useMemo(() => {
       if (isTrackingMode && trackingStartPos && liveLocation) {
           return MathUtils.calculateDistance(trackingStartPos, liveLocation);
@@ -366,22 +383,35 @@ const PlayRound = () => {
     if (isReplay && replayRound) {
         setShots(replayRound.shots);
         setScorecard(replayRound.scorecard);
+        setShowTeeSelect(false);
     } else {
         const searchParams = new URLSearchParams(location.search);
         if (searchParams.get('restore') === 'true' && user) {
             const saved = StorageService.getTempState(user);
             if (saved) {
-                // Course ID was handled in useState
                 setCurrentHoleIdx(saved.currentHoleIndex);
                 setShots(saved.shots);
                 setScorecard(saved.scorecard);
                 setShotNum(saved.currentShotNum);
-                // currentBallPos was handled in useState
+                // If restore, we don't show tee select unless data is missing
+                setShowTeeSelect(false);
             }
         }
     }
   }, []);
 
+  // Update Ball Pos when hole changes IF we are at the tee
+  useEffect(() => {
+      if (hole && shotNum === 1 && !pendingShot && !isReplay) {
+          // If we haven't taken a shot on this hole, ensure we are at the active tee
+           const isAtTee = shots.filter(s => s.holeNumber === hole.number).length === 0;
+           if (isAtTee) {
+              setCurrentBallPos(activeTee);
+           }
+      }
+  }, [currentHoleIdx, activeTee]);
+
+  // ... (Other effects same) ...
   useEffect(() => {
     if (isReplay || !navigator.geolocation) return;
     watchIdRef.current = navigator.geolocation.watchPosition((p) => {
@@ -394,15 +424,6 @@ const PlayRound = () => {
     }, () => setGpsSignalLevel(0), { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 });
     return () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); };
   }, [isReplay]);
-
-  useEffect(() => {
-      if (hole && shotNum === 1 && !pendingShot) {
-          const isAtTee = currentBallPos.lat === hole.tee.lat && currentBallPos.lng === hole.tee.lng;
-          if (!isAtTee && shots.filter(s => s.holeNumber === hole.number).length === 0) {
-              setCurrentBallPos(hole.tee);
-          }
-      }
-  }, [currentHoleIdx, activeCourse]);
 
   useEffect(() => {
     if (hole && activeCourse) setAnnotations(StorageService.getAnnotations(activeCourse.id, hole.number));
@@ -424,32 +445,27 @@ const PlayRound = () => {
         scorecard,
         shots,
         courseId: activeCourse.id,
-        tournamentId: tournamentId // Persist tournament context in temp state
+        tournamentId: tournamentId
       });
     }
   }, [currentHoleIdx, shotNum, currentBallPos, scorecard, shots, isReplay, user, activeCourse, tournamentId]);
 
   if (!hole) return <div className="p-10 text-white">Loading Hole Data...</div>;
 
-  // ... (Calculation Logic remains same) ...
-  const holeOrientation = useMemo(() => MathUtils.calculateBearing(hole.tee, hole.green), [hole]);
-  const defaultRadiusMeters = 13.716;
+  // -- LOGIC START FOR GREEN POINTS DEFAULTING --
+  // Use new Geometry logic if available
+  const greenCenter = hole.greenGeo?.center || hole.green;
+  
+  const greenEdges = useMemo(() => {
+      // This is the key upgrade: calculate dynamic edges based on player position
+      return MathUtils.getDynamicGreenEdges(currentBallPos, greenCenter, hole.greenGeo?.shape || []);
+  }, [currentBallPos, greenCenter, hole.greenGeo]);
 
-  const activeGreenFront = useMemo(() => {
-      if (hole.greenFront) return hole.greenFront;
-      return MathUtils.calculateDestination(hole.green, defaultRadiusMeters, holeOrientation + 180);
-  }, [hole, holeOrientation]);
+  const distToGreen = useMemo(() => MathUtils.calculateDistance(currentBallPos, greenCenter), [currentBallPos, greenCenter]);
+  const distToFront = useMemo(() => MathUtils.calculateDistance(currentBallPos, greenEdges.front), [currentBallPos, greenEdges]);
+  const distToBack = useMemo(() => MathUtils.calculateDistance(currentBallPos, greenEdges.back), [currentBallPos, greenEdges]);
 
-  const activeGreenBack = useMemo(() => {
-      if (hole.greenBack) return hole.greenBack;
-      return MathUtils.calculateDestination(hole.green, defaultRadiusMeters, holeOrientation);
-  }, [hole, holeOrientation]);
-
-  const distToGreen = useMemo(() => MathUtils.calculateDistance(currentBallPos, hole.green), [currentBallPos, hole]);
-  const distToFront = useMemo(() => MathUtils.calculateDistance(currentBallPos, activeGreenFront), [currentBallPos, activeGreenFront]);
-  const distToBack = useMemo(() => MathUtils.calculateDistance(currentBallPos, activeGreenBack), [currentBallPos, activeGreenBack]);
-
-  const baseBearing = useMemo(() => MathUtils.calculateBearing(currentBallPos, hole.green), [currentBallPos, hole]);
+  const baseBearing = useMemo(() => MathUtils.calculateBearing(currentBallPos, greenCenter), [currentBallPos, greenCenter]);
   const shotBearing = baseBearing + aimAngle;
   const mapRotation = -baseBearing;
 
@@ -457,7 +473,7 @@ const PlayRound = () => {
     currentBallPos, selectedClub.carry, shotBearing, windSpeed, windDir
   ), [currentBallPos, selectedClub, shotBearing, windSpeed, windDir]);
 
-  const distLandingToGreen = useMemo(() => MathUtils.calculateDistance(predictedLanding, hole.green), [predictedLanding, hole]);
+  const distLandingToGreen = useMemo(() => MathUtils.calculateDistance(predictedLanding, greenCenter), [predictedLanding, greenCenter]);
 
   const ellipsePoints = useMemo(() => MathUtils.getEllipsePoints(
     predictedLanding, 
@@ -476,21 +492,19 @@ const PlayRound = () => {
       return pts.filter(p => p.lat !== 0 && p.lng !== 0);
   }, [isReplay, hole, holeShots]);
 
-  const guideLinePoints = useMemo(() => [[predictedLanding.lat, predictedLanding.lng], [hole.green.lat, hole.green.lng]], [predictedLanding, hole]);
+  const guideLinePoints = useMemo(() => [[predictedLanding.lat, predictedLanding.lng], [greenCenter.lat, greenCenter.lng]], [predictedLanding, greenCenter]);
   const guideLabelPos = useMemo(() => ({
-      lat: predictedLanding.lat + (hole.green.lat - predictedLanding.lat) * 0.33,
-      lng: predictedLanding.lng + (hole.green.lng - predictedLanding.lng) * 0.33
-  }), [predictedLanding, hole]);
+      lat: predictedLanding.lat + (greenCenter.lat - predictedLanding.lat) * 0.33,
+      lng: predictedLanding.lng + (greenCenter.lng - predictedLanding.lng) * 0.33
+  }), [predictedLanding, greenCenter]);
 
   const activeMeasureTarget = measureTarget || predictedLanding;
   const measureDist1 = useMemo(() => MathUtils.calculateDistance(currentBallPos, activeMeasureTarget), [currentBallPos, activeMeasureTarget]);
-  const measureDist2 = useMemo(() => MathUtils.calculateDistance(activeMeasureTarget, hole.green), [activeMeasureTarget, hole]);
+  const measureDist2 = useMemo(() => MathUtils.calculateDistance(activeMeasureTarget, greenCenter), [activeMeasureTarget, greenCenter]);
   const labelPos1 = useMemo(() => ({ lat: (currentBallPos.lat + activeMeasureTarget.lat) / 2, lng: (currentBallPos.lng + activeMeasureTarget.lng) / 2 }), [currentBallPos, activeMeasureTarget]);
-  const labelPos2 = useMemo(() => ({ lat: (activeMeasureTarget.lat + hole.green.lat) / 2, lng: (activeMeasureTarget.lng + hole.green.lng) / 2 }), [activeMeasureTarget, hole]);
+  const labelPos2 = useMemo(() => ({ lat: (activeMeasureTarget.lat + greenCenter.lat) / 2, lng: (activeMeasureTarget.lng + greenCenter.lng) / 2 }), [activeMeasureTarget, greenCenter]);
 
   const currentLayupStrategy = useMemo(() => MathUtils.calculateLayupStrategy(distToGreen, bag, shotNum), [distToGreen, bag, shotNum]);
-
-  // ... (Effects and Helper Functions same until finishRound) ...
 
   useEffect(() => {
     if (!isReplay && bag.length > 0 && !isMeasureMode && !isTrackingMode) {
@@ -517,7 +531,7 @@ const PlayRound = () => {
     return (sorted.find(c => c.carry >= distLandingToGreen) || sorted[sorted.length-1]).name;
   }, [distLandingToGreen, bag, currentLayupStrategy, distToGreen, shotNum]);
 
-  // ... (Save/Notes Logic same) ...
+  // ... (Standard Handler Functions unchanged: saveDrawing, saveTextNote, handleMapClick, handleManualDrop, initiateGPSShot, setTeeToGPS, handleMeasureGPS, handleStartShot, handleFinishTracking, confirmShot, deleteAnnotation, handleDeleteShot) ...
   const saveDrawing = () => {
       if (drawingPoints.length < 2) return;
       const newNote: MapAnnotation = {
@@ -593,7 +607,15 @@ const PlayRound = () => {
     else navigator.geolocation.getCurrentPosition(success, (err) => alert("GPS Error: " + err.message), { enableHighAccuracy: true, timeout: 5000 });
   };
 
-  // ... (Tee/Measure GPS logic) ...
+  const setTeeToGPS = () => {
+    const success = (pos: any) => {
+        setCurrentBallPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+    };
+    if (liveLocation && gpsAccuracy && gpsAccuracy < 50) success({ coords: { latitude: liveLocation.lat, longitude: liveLocation.lng } });
+    else navigator.geolocation.getCurrentPosition(success, (err) => alert("GPS Error: " + err.message));
+  };
+
   const handleMeasureGPS = () => {
       if (liveLocation) { setCurrentBallPos(liveLocation); if (navigator.vibrate) navigator.vibrate(50); return; }
       navigator.geolocation.getCurrentPosition((pos) => {
@@ -639,13 +661,21 @@ const PlayRound = () => {
     }
   };
 
+  const handleDeleteShot = () => {
+    if (!shotToDelete) return;
+    const isMostRecent = shots.filter(s => s.holeNumber === hole.number).pop() === shotToDelete;
+    setShots(prev => prev.filter(s => s !== shotToDelete));
+    if (isMostRecent) { setCurrentBallPos(shotToDelete.from); setShotNum(Math.max(1, shotToDelete.shotNumber)); }
+    setShotToDelete(null);
+  };
+
   const saveHoleScore = (totalScore: number, putts: number, pens: number) => {
     if (isSaving) return;
     setIsSaving(true);
 
     const newScore = { 
         holeNumber: hole.number, 
-        par: Number(hole.par), 
+        par: Number(activePar), // Use tee-specific par
         shotsTaken: Math.max(0, totalScore - putts - pens), 
         putts, 
         penalties: pens 
@@ -666,7 +696,14 @@ const PlayRound = () => {
   const loadHole = (idx: number) => {
     setCurrentHoleIdx(idx);
     const h = activeCourse.holes[idx];
-    setCurrentBallPos(h.tee);
+    // Find active tee loc
+    let teeLoc = h.tee;
+    if (selectedTee && h.teeBoxes && h.teeBoxes.length > 0) {
+        const match = h.teeBoxes.find(t => t.name === selectedTee.name) || h.teeBoxes[0];
+        teeLoc = match.location;
+    }
+    
+    setCurrentBallPos(teeLoc);
     if (!isReplay) {
         setShotNum(1); 
         setAimAngle(0);
@@ -675,30 +712,23 @@ const PlayRound = () => {
     setIsTrackingMode(false); setTrackingStartPos(null);
   };
 
-  // --- UPDATED FINISH ROUND: SYNC TO CLOUD ---
   const finishRound = (finalScorecard?: HoleScore[]) => {
     if(!user) return;
-    
-    // 1. Create Data
     const cardToSave = finalScorecard || scorecard;
-    const history: RoundHistory = { 
+    const history = { 
         id: crypto.randomUUID(), 
         date: new Date().toLocaleString(), 
         courseName: activeCourse.name, 
         scorecard: cardToSave, 
-        shots,
-        tournamentId: tournamentId // Attach tournament ID if present
+        shots, 
+        tournamentId,
+        teeName: selectedTee?.name
     };
-
-    // 2. Save Local
     StorageService.saveHistory(user, history);
     StorageService.clearTempState(user);
-
-    // 3. Sync to Cloud (Pass tournament ID explicitly)
     if (isOnline) {
         CloudService.syncRound(user, history, tournamentId);
     }
-
     navigate('/summary', { state: { round: history } });
   };
 
@@ -756,10 +786,9 @@ const PlayRound = () => {
 
   return (
     <div className="h-full relative bg-gray-900 flex flex-col overflow-hidden select-none touch-none" onContextMenu={(e) => e.preventDefault()}>
-      {/* ... (Render Logic remains largely same) ... */}
       <div className="absolute inset-0 z-0 bg-black w-full h-full overflow-hidden">
         <div style={{ position: 'absolute', top: '50%', left: '50%', width: '150vmax', height: '150vmax', transformOrigin: 'center center', transform: `translate(-50%, -50%) rotate(${mapRotation}deg)`, transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
-            <MapContainer key={`${activeCourse.id}-${currentHoleIdx}`} center={[hole.tee.lat, hole.tee.lng]} zoom={18} maxZoom={22} className="h-full w-full bg-black" zoomControl={false} attributionControl={false} dragging={false} doubleClickZoom={false}>
+            <MapContainer key={`${activeCourse.id}-${currentHoleIdx}`} center={[activeTee.lat, activeTee.lng]} zoom={18} maxZoom={22} className="h-full w-full bg-black" zoomControl={false} attributionControl={false} dragging={false} doubleClickZoom={false}>
               <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxNativeZoom={19} maxZoom={22} noWrap={true} />
               <RotatedMapHandler 
                 rotation={mapRotation} 
@@ -768,7 +797,17 @@ const PlayRound = () => {
               />
               <MapInitializer center={currentBallPos} isReplay={isReplay} pointsToFit={replayPoints} />
               {!isReplay && liveLocation && <Marker position={[liveLocation.lat, liveLocation.lng]} icon={userLocationIcon} zIndexOffset={1000} />}
-              <Marker position={[hole.green.lat, hole.green.lng]} icon={flagIcon} />
+              <Marker position={[greenCenter.lat, greenCenter.lng]} icon={flagIcon} />
+              
+              {/* Green Polygon */}
+              {hole.greenGeo && hole.greenGeo.shape.length > 0 && (
+                  <Polygon 
+                      positions={hole.greenGeo.shape.map(p => [p.lat, p.lng])}
+                      pathOptions={{ color: '#ffffff', weight: 1, fillOpacity: 0.1, dashArray: '4,4' }}
+                      interactive={false}
+                  />
+              )}
+
               {annotations.map(note => {
                  const handlers = isNoteMode ? { click: () => activeTool === 'eraser' && deleteAnnotation(note.id) } : {};
                  if (note.type === 'path') return <Polyline key={note.id} positions={note.points.map(p => [p.lat, p.lng])} pathOptions={{ color: '#facc15', weight: 3, dashArray: '5,5', opacity: 0.8, className: 'pointer-events-none' }} interactive={true} eventHandlers={handlers} />;
@@ -852,7 +891,7 @@ const PlayRound = () => {
                       <Marker position={[activeMeasureTarget.lat, activeMeasureTarget.lng]} icon={measureTargetIcon} />
                       <Polyline positions={[[currentBallPos.lat, currentBallPos.lng], [activeMeasureTarget.lat, activeMeasureTarget.lng]]} pathOptions={{ color: "black", weight: 6, opacity: 0.3, className: 'pointer-events-none' }} interactive={false} />
                       <Polyline positions={[[currentBallPos.lat, currentBallPos.lng], [activeMeasureTarget.lat, activeMeasureTarget.lng]]} pathOptions={{ color: "#60a5fa", weight: 3, opacity: 1, className: 'pointer-events-none' }} interactive={false} />
-                      <Polyline positions={[[activeMeasureTarget.lat, activeMeasureTarget.lng], [hole.green.lat, hole.green.lng]]} pathOptions={{ color: "#ffffff", weight: 3, dashArray: "8, 8", opacity: 0.8, className: 'pointer-events-none' }} interactive={false} />
+                      <Polyline positions={[[activeMeasureTarget.lat, activeMeasureTarget.lng], [greenCenter.lat, greenCenter.lng]]} pathOptions={{ color: "#ffffff", weight: 3, dashArray: "8, 8", opacity: 0.8, className: 'pointer-events-none' }} interactive={false} />
                       <Marker position={[labelPos1.lat, labelPos1.lng]} icon={createDistanceLabelIcon(MathUtils.formatDistance(measureDist1, useYards), -mapRotation, '#60a5fa')} interactive={false} />
                       <Marker position={[labelPos2.lat, labelPos2.lng]} icon={createDistanceLabelIcon(MathUtils.formatDistance(measureDist2, useYards), -mapRotation, '#ffffff')} interactive={false} />
                   </>
@@ -862,6 +901,33 @@ const PlayRound = () => {
       </div>
       
       {/* ---------------- UI LAYERS ---------------- */}
+
+      {/* TEE SELECTION MODAL */}
+      {showTeeSelect && !isReplay && activeCourse.holes[0]?.teeBoxes?.length > 0 && (
+          <ModalOverlay>
+               <div className="p-6 text-center">
+                   <h2 className="text-xl font-bold text-white mb-4">Select Tees</h2>
+                   <div className="space-y-3">
+                       {activeCourse.holes[0].teeBoxes.map(t => (
+                           <button 
+                               key={t.id}
+                               onClick={() => { setSelectedTee(t); setShowTeeSelect(false); }}
+                               className="w-full bg-gray-800 hover:bg-gray-700 p-4 rounded-xl flex items-center gap-4 border border-gray-700"
+                           >
+                               <div className="w-6 h-6 rounded border border-white/50 shadow-sm" style={{ backgroundColor: t.color }}></div>
+                               <div className="text-left">
+                                   <div className="font-bold text-white">{t.name}</div>
+                                   <div className="text-xs text-gray-500">Par {t.par}</div>
+                               </div>
+                           </button>
+                       ))}
+                   </div>
+                   <button onClick={() => setShowTeeSelect(false)} className="mt-4 text-gray-500 text-sm">
+                       Use Default
+                   </button>
+               </div>
+          </ModalOverlay>
+      )}
 
       {/* TOP LEFT: MAIN HUD (Compact & Vertical Stack) */}
       {!isReplay && !isMeasureMode && (
@@ -873,7 +939,7 @@ const PlayRound = () => {
                        </button>
                        <div className="flex flex-col items-center leading-none">
                            <span className="text-[9px] font-black text-white">H{hole.number}</span>
-                           <span className="text-[7px] font-bold text-gray-500">P{hole.par}</span>
+                           <span className="text-[7px] font-bold text-gray-500">P{activePar}</span>
                        </div>
                        <div className="flex items-center justify-end">
                            {gpsSignalLevel === 3 ? <SignalHigh size={12} className="text-green-500" /> : gpsSignalLevel === 0 ? <SignalLow size={12} className="text-red-500" /> : <SignalMedium size={12} className="text-yellow-500" />}
@@ -891,6 +957,15 @@ const PlayRound = () => {
                             {Math.round(useYards ? distToFront * 1.09361 : distToFront)}
                         </div>
                    </div>
+                   
+                   {/* Green Width Indicator (optional) */}
+                   {hole.greenGeo && hole.greenGeo.shape.length > 0 && (
+                       <div className="border-t border-white/10 py-1 text-center bg-gray-800/50">
+                           <span className="text-[8px] text-gray-500 font-mono">
+                               W:{Math.round(useYards ? MathUtils.calculateDistance(greenEdges.left, greenEdges.right)*1.09 : MathUtils.calculateDistance(greenEdges.left, greenEdges.right))}
+                           </span>
+                       </div>
+                   )}
 
                    {windSpeed > 0 && (
                         <div className="border-t border-blue-500/20 bg-blue-900/10 py-1 text-center px-1">
@@ -918,7 +993,7 @@ const PlayRound = () => {
                    if (!hScore) return null;
                    
                    const total = hScore.shotsTaken + hScore.putts + hScore.penalties;
-                   const diff = total - hole.par;
+                   const diff = total - activePar;
                    let scoreColor = 'text-white';
                    if (diff < 0) scoreColor = 'text-red-400';
                    else if (diff > 0) scoreColor = 'text-blue-400';
@@ -927,7 +1002,7 @@ const PlayRound = () => {
                        <div className="pointer-events-auto bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl overflow-hidden min-w-[80px]">
                            <div className="bg-white/5 px-2.5 py-1.5 flex items-center justify-between border-b border-white/5 gap-2">
                                 <span className="text-xs font-black text-white">H{hole.number}</span>
-                                <span className="text-[10px] font-bold text-gray-400">P{hole.par}</span>
+                                <span className="text-[10px] font-bold text-gray-400">P{activePar}</span>
                            </div>
                            <div className="px-2 py-2 text-center">
                                 <div className={`text-3xl font-black leading-none mb-1.5 ${scoreColor}`}>{total}</div>
@@ -1056,7 +1131,7 @@ const PlayRound = () => {
           </div>
       )}
 
-      {/* ... (Bottom UI and Modals remain same) ... */}
+      {/* ... (Bottom UI and Modals remain same, using activePar for score calculations) ... */}
       {!isReplay && isNoteMode && (
           <div className="absolute bottom-0 w-full z-30 pt-2 px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] bg-black/80 backdrop-blur-md border-t border-white/10 animate-in slide-in-from-bottom-10">
               <div className="flex justify-between items-center mb-2">
@@ -1168,7 +1243,7 @@ const PlayRound = () => {
       )}
 
       {showHoleSelect && <HoleSelectorModal holes={activeCourse.holes} currentIdx={currentHoleIdx} onSelect={loadHole} onClose={() => setShowHoleSelect(false)} />}
-      {showScoreModal && <ScoreModal par={hole.par} holeNum={hole.number} recordedShots={Math.max(0, shotNum - 1)} onSave={saveHoleScore} onClose={() => setShowScoreModal(false)} />}
+      {showScoreModal && <ScoreModal par={activePar} holeNum={hole.number} recordedShots={Math.max(0, shotNum - 1)} onSave={saveHoleScore} onClose={() => setShowScoreModal(false)} />}
       {showFullCard && <FullScorecardModal holes={activeCourse.holes} scorecard={scorecard} onFinishRound={() => finishRound()} onClose={() => setShowFullCard(false)} />}
       {pendingShot && <ShotConfirmModal dist={MathUtils.formatDistance(pendingShot.dist, useYards)} club={selectedClub} clubs={bag} isGPS={pendingShot.isGPS} isLongDistWarning={pendingShot.dist > 500} onChangeClub={setSelectedClub} onConfirm={confirmShot} onCancel={() => setPendingShot(null)} />}
       

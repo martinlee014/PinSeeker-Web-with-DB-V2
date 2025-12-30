@@ -11,21 +11,40 @@ export interface ClubStats {
   depthError: number;
 }
 
+export interface TeeBox {
+  id: string;
+  name: string; // e.g., "Blue", "White", "Red"
+  color: string; // Hex color
+  location: LatLng;
+  par: number;
+  strokeIndex: number; // Handicap
+  courseRating?: number;
+  slopeRating?: number;
+}
+
+export interface GreenGeometry {
+  center: LatLng;
+  shape: LatLng[]; // Polygon points
+  width?: number; // Optional cached width
+  depth?: number; // Optional cached depth
+}
+
 export interface GolfHole {
   number: number;
-  par: number;
-  tee: LatLng;
-  green: LatLng; // Center of the green
-  greenFront?: LatLng;
-  greenBack?: LatLng;
-  greenLeft?: LatLng;
-  greenRight?: LatLng;
+  // Legacy/Simplified Fallback
+  par: number; 
+  tee: LatLng; 
+  green: LatLng; 
+  
+  // New Detailed Data
+  teeBoxes: TeeBox[];
+  greenGeo?: GreenGeometry;
 }
 
 export interface GolfCourse {
   id: string;
   name: string;
-  country?: string; // Added for global filtering
+  country?: string;
   holes: GolfHole[];
   createdAt?: string;
   isCustom?: boolean;
@@ -63,8 +82,9 @@ export interface RoundHistory {
   courseName: string;
   scorecard: HoleScore[];
   shots: ShotRecord[];
-  tournamentId?: string; // New: Link to a tournament
-  player?: string; // New: For leaderboards (to show who played)
+  tournamentId?: string;
+  player?: string;
+  teeName?: string; // Record which tee was played
 }
 
 export interface MapAnnotation {
@@ -86,7 +106,7 @@ export interface GameState {
   shots: ShotRecord[];
   isRoundActive: boolean;
   courseId?: string; 
-  tournamentId?: string; // New
+  tournamentId?: string; 
 }
 
 export interface UserSession {
@@ -94,7 +114,6 @@ export interface UserSession {
     sessionId: string;
 }
 
-// New Tournament Interfaces
 export interface Tournament {
     id: string;
     name: string;

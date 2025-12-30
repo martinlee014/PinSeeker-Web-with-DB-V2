@@ -1,3 +1,4 @@
+
 import { LatLng, ClubStats } from '../types';
 
 const EARTH_RADIUS = 6378137.0; // Meters
@@ -129,9 +130,63 @@ export const formatDistance = (meters: number, useYards: boolean): string => {
 };
 
 /**
- * Generates a full golf bag configuration based on handicap.
- * Logic: Higher HDCP = Lower distance, Higher lateral & depth scatter.
+ * Calculates the Front, Back, Left, and Right points of a green polygon
+ * relative to the player's perspective (bearing to center).
  */
+export const getDynamicGreenEdges = (
+    playerPos: LatLng,
+    greenCenter: LatLng,
+    greenShape: LatLng[]
+): { front: LatLng, back: LatLng, left: LatLng, right: LatLng } => {
+    if (!greenShape || greenShape.length === 0) {
+        // Fallback: Circular approximation (13.7m radius)
+        const bearing = calculateBearing(playerPos, greenCenter);
+        return {
+            front: calculateDestination(greenCenter, 13.7, bearing + 180),
+            back: calculateDestination(greenCenter, 13.7, bearing),
+            left: calculateDestination(greenCenter, 10, bearing - 90),
+            right: calculateDestination(greenCenter, 10, bearing + 90),
+        };
+    }
+
+    const bearingToCenter = calculateBearing(playerPos, greenCenter);
+    // Rotate coordinates so bearingToCenter becomes "North" (0 degrees)
+    // This simplifies finding min/max Y (Front/Back) and min/max X (Left/Right)
+    const rotationRad = toRad(-bearingToCenter);
+
+    let minDepth = Infinity, maxDepth = -Infinity;
+    let minWidth = Infinity, maxWidth = -Infinity;
+    let frontPt = greenShape[0], backPt = greenShape[0];
+    let leftPt = greenShape[0], rightPt = greenShape[0];
+
+    greenShape.forEach(pt => {
+        // Approximate projection to meters relative to center
+        const dLat = (pt.lat - greenCenter.lat) * (Math.PI / 180) * EARTH_RADIUS;
+        const dLon = (pt.lng - greenCenter.lng) * (Math.PI / 180) * EARTH_RADIUS * Math.cos(toRad(greenCenter.lat));
+
+        // Rotate
+        const x = dLon * Math.cos(rotationRad) - dLat * Math.sin(rotationRad);
+        const y = dLon * Math.sin(rotationRad) + dLat * Math.cos(rotationRad);
+
+        // Project onto the line of play
+        const distToPt = calculateDistance(greenCenter, pt);
+        const bearingToPt = calculateBearing(greenCenter, pt);
+        const relativeBearing = (bearingToPt - bearingToCenter + 360) % 360;
+        
+        // Depth: Cosine component (Positive = Back, Negative = Front)
+        const depth = distToPt * Math.cos(toRad(relativeBearing));
+        // Width: Sine component (Positive = Right, Negative = Left)
+        const width = distToPt * Math.sin(toRad(relativeBearing));
+
+        if (depth < minDepth) { minDepth = depth; frontPt = pt; }
+        if (depth > maxDepth) { maxDepth = depth; backPt = pt; }
+        if (width < minWidth) { minWidth = width; leftPt = pt; }
+        if (width > maxWidth) { maxWidth = width; rightPt = pt; }
+    });
+
+    return { front: frontPt, back: backPt, left: leftPt, right: rightPt };
+};
+
 export const generateClubsFromHdcp = (hdcp: number): ClubStats[] => {
     // 0 HDCP Baseline
     const baseline = [
@@ -151,10 +206,7 @@ export const generateClubsFromHdcp = (hdcp: number): ClubStats[] => {
         { name: "Putter", carry: 30, sideRate: 0.03, depthRate: 0.03 },
     ];
 
-    // Scaling Factors
-    // Max reduction at 30 HDCP is about 25% of distance.
     const distFactor = 1 - (Math.min(30, hdcp) * 0.008); 
-    // Max scatter increase at 30 HDCP is 250% higher than baseline.
     const scatterFactor = 1 + (Math.min(30, hdcp) * 0.08);
 
     return baseline.map(c => ({
@@ -211,4 +263,53 @@ export const getStrategyRecommendation = (
   if (shotNum > 1 && distanceToGreen > maxCarry) return { mainAction: "Layup Required", subAction: "Check recommended combo" };
   if (shotNum === 1 && distanceToGreen > 220) return { mainAction: "Safe Drive", subAction: "Focus on fairway hit" };
   return { mainAction: "Approach", subAction: `Leaves ${dist}${unit} to pin` };
+};
+
+/**
+ * Uses Catmull-Rom Spline interpolation to generate a smooth closed path 
+ * passing through all provided control points.
+ */
+export const getSmoothClosedPath = (points: LatLng[], tension: number = 0.5, numOfSegments: number = 10): LatLng[] => {
+    if (points.length < 3) return points;
+
+    const res: LatLng[] = [];
+    const _pts = [...points];
+    
+    // To close the loop smoothly:
+    // We treat the list as circular. 
+    // Logic: for segment i, we need p[i-1], p[i], p[i+1], p[i+2]
+    
+    for (let i = 0; i < _pts.length; i++) {
+        const p0 = _pts[(i - 1 + _pts.length) % _pts.length];
+        const p1 = _pts[i];
+        const p2 = _pts[(i + 1) % _pts.length];
+        const p3 = _pts[(i + 2) % _pts.length];
+
+        for (let t = 0; t < numOfSegments; t++) {
+            const t1 = t / numOfSegments;
+            const t2 = t1 * t1;
+            const t3 = t2 * t1;
+
+            // Catmull-Rom calculation
+            // We do this for lat and lng separately
+            
+            const calc = (v0: number, v1: number, v2: number, v3: number) => {
+                return 0.5 * (
+                    (2 * v1) +
+                    (-v0 + v2) * t1 +
+                    (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 +
+                    (-v0 + 3 * v1 - 3 * v2 + v3) * t3
+                );
+            };
+
+            res.push({
+                lat: calc(p0.lat, p1.lat, p2.lat, p3.lat),
+                lng: calc(p0.lng, p1.lng, p2.lng, p3.lng)
+            });
+        }
+    }
+    
+    // Add the first point at the end to ensure exact closure if render doesn't auto-close
+    res.push(res[0]); 
+    return res;
 };
