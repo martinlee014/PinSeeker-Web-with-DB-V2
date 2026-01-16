@@ -3,7 +3,16 @@ import { useState, ReactNode, ChangeEvent, useEffect, FC } from 'react';
 import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw, Users, AlertCircle } from 'lucide-react';
 import { ClubStats, GolfHole, HoleScore, RoundHistory } from '../types';
 
-export const ModalOverlay = ({ children, onClose }: { children?: ReactNode, onClose?: () => void }) => (
+// Updated ModalOverlay with optional maxWidth prop
+export const ModalOverlay = ({ 
+    children, 
+    onClose, 
+    className = "max-w-sm" // Default width
+}: { 
+    children?: ReactNode, 
+    onClose?: () => void,
+    className?: string 
+}) => (
   <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
     <div 
       className="absolute inset-0 bg-black/80 backdrop-blur-sm" 
@@ -13,7 +22,7 @@ export const ModalOverlay = ({ children, onClose }: { children?: ReactNode, onCl
       }} 
     />
     <div 
-      className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-sm relative z-10 overflow-hidden shadow-2xl max-h-[90vh] flex flex-col pointer-events-auto"
+      className={`bg-gray-900 rounded-2xl border border-gray-700 w-full relative z-10 overflow-hidden shadow-2xl max-h-[90vh] flex flex-col pointer-events-auto ${className}`}
       onClick={(e) => e.stopPropagation()}
     >
       {children}
@@ -26,7 +35,7 @@ export const BagSyncConflictModal = ({
     onUseCloud, 
     onUseLocal 
 }: { 
-    cloudDate?: string, // Optional timestamp if available
+    cloudDate?: string, 
     onUseCloud: () => void, 
     onUseLocal: () => void 
 }) => {
@@ -226,7 +235,7 @@ export const ScoreConflictModal = ({
     );
 };
 
-// --- MULTI-PLAYER SCORE MODAL (REDESIGNED) ---
+// --- MULTI-PLAYER SCORE MODAL ---
 interface PlayerScoreState {
     totalScore: number;
     putts: number;
@@ -481,7 +490,7 @@ export const FullScorecardModal = ({
   };
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} className="max-w-4xl">
       <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900 shrink-0">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Trophy size={18} className="text-yellow-500"/> Group Scorecard
