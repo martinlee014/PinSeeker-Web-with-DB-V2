@@ -125,9 +125,22 @@ const App = () => {
   const [showBagSyncModal, setShowBagSyncModal] = useState(false);
   const [pendingCloudBag, setPendingCloudBag] = useState<ClubStats[] | null>(null);
 
+  // Store join code in ref to persist across redirects/renders
+  const pendingJoinCode = useRef<string | null>(null);
   const heartbeatInterval = useRef<any>(null);
 
-  // Initial Load
+  // Parse URL for join code immediately on mount
+  useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+      const code = params.get('joinCode') || hashParams.get('joinCode');
+      if (code) {
+          pendingJoinCode.current = code;
+          console.log("Captured Join Code:", code);
+      }
+  }, []);
+
+  // Initial Load & Listeners
   useEffect(() => {
     setBag(StorageService.getBag());
     if (!StorageService.hasSeenOnboarding()) {
@@ -139,34 +152,39 @@ const App = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // --- AUTO-JOIN TOURNAMENT LOGIC ---
-    // Check if we have a pending join code from URL params
-    const checkForJoinCode = async () => {
-        const params = new URLSearchParams(window.location.search);
-        // Also check hash params since we use HashRouter
-        const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
-        const code = params.get('joinCode') || hashParams.get('joinCode');
-        
-        if (code && user) {
-            // If user is already logged in, try to join immediately
-            console.log("Auto-joining tournament:", code);
-            const res = await CloudService.joinTournament(code.toUpperCase(), user);
-            if(res.success) {
-                // We use a small timeout to let the router mount, then redirect to tournaments
-                setTimeout(() => window.location.hash = '#/tournaments', 500);
-            } else {
-                console.error("Auto-join failed:", res.error);
-            }
-        }
-    };
-    
-    checkForJoinCode();
-
     return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
     };
-  }, [user]); // Re-run when user changes (e.g. after login)
+  }, []);
+
+  // Auto-Join Logic (Triggered when user becomes available)
+  useEffect(() => {
+      const handleAutoJoin = async () => {
+          if (pendingJoinCode.current && user && isOnline) {
+              const code = pendingJoinCode.current;
+              console.log("Attempting auto-join for:", code);
+              
+              // Clear it so we don't retry in loop
+              pendingJoinCode.current = null;
+
+              const res = await CloudService.joinTournament(code.toUpperCase(), user);
+              if(res.success) {
+                  // Wait slightly for Router to stabilize if redirection happened
+                  setTimeout(() => {
+                      window.location.hash = '#/tournaments';
+                  }, 500);
+              } else {
+                  console.error("Auto-join failed:", res.error);
+                  alert("Failed to join tournament: " + res.error);
+              }
+          }
+      };
+
+      if (user) {
+          handleAutoJoin();
+      }
+  }, [user, isOnline]);
 
   // Heartbeat / Mutex Check
   useEffect(() => {

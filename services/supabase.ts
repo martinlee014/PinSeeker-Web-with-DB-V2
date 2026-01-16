@@ -332,6 +332,19 @@ export const CloudService = {
   // AUTH & SESSION MANAGEMENT (Existing)
   // ---------------------------------------------------
 
+  checkProfileExists: async (username: string): Promise<boolean> => {
+      const supabase = getClient();
+      if (!supabase) return false;
+
+      const { data, error } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('username', username)
+          .single();
+
+      return !!data && !error;
+  },
+
   loginAndCreateSession: async (username: string): Promise<{ 
       success: boolean; 
       sessionId?: string; 

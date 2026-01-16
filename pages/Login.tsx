@@ -3,9 +3,10 @@ import { useState, useContext, FormEvent, useEffect } from 'react';
 import { AppContext } from '../App';
 import { Loader2, Cloud, ArrowRight, Activity } from 'lucide-react';
 import * as MathUtils from '../services/mathUtils';
+import { CloudService } from '../services/supabase';
 
 const Login = () => {
-  const { login, updateHdcp, updateBag } = useContext(AppContext);
+  const { login, updateHdcp, updateBag, isOnline } = useContext(AppContext);
   const [step, setStep] = useState<'username' | 'hdcp'>('username');
   const [name, setName] = useState('');
   const [hdcpInput, setHdcpInput] = useState(18);
@@ -26,21 +27,35 @@ const Login = () => {
     
     setIsLoading(true);
     
-    // We attempt login. If it's a new user (no bag data returned), the App logic 
-    // will normally just log them in with default bag. 
-    // However, for this requirement, we want to intercept "New Users" to ask for HDCP.
-    // Since `login` in App.tsx abstracts the logic, we will check if we should show HDCP 
-    // based on a heuristic: we assume everyone is "new" to this session if they are typing a name here.
-    // A better approach: Try login. If it returns true, we are in.
-    // BUT, we want to Inject the HDCP flow *before* final dashboard access if possible, 
-    // OR we just ask everyone for their HDCP if they don't have a specific saved session.
-    
-    // STRATEGY: We will proceed to HDCP step immediately for UX "Setup Profile" feel,
-    // unless we detect they are strictly logging in to an existing account.
-    // For simplicity and satisfying "New user... input username then HDCP", we move to step 2.
-    
-    setIsLoading(false);
-    setStep('hdcp');
+    try {
+        // Check if user already exists in the cloud
+        let userExists = false;
+        
+        if (isOnline) {
+            userExists = await CloudService.checkProfileExists(name.trim());
+        }
+
+        if (userExists) {
+            // User exists: Skip HDCP step and just log in
+            // The App context 'login' function will pull bag data from cloud automatically
+            const success = await login(name.trim());
+            if (!success) {
+                // Should rarely happen if checkProfileExists was true, but handle error
+                alert("Login failed. Please check your connection.");
+                setIsLoading(false);
+            }
+            // If success, App component will trigger redirect via useEffect/Routing
+        } else {
+            // New User (or offline): Go to HDCP setup
+            setIsLoading(false);
+            setStep('hdcp');
+        }
+    } catch (e) {
+        console.error("Login Check Error", e);
+        // Fallback to flow if error
+        setIsLoading(false);
+        setStep('hdcp');
+    }
   };
 
   const handleFinalSubmit = async () => {
