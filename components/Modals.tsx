@@ -1,6 +1,5 @@
 
-
-import { useState, ReactNode, ChangeEvent, useEffect } from 'react';
+import { useState, ReactNode, ChangeEvent, useEffect, FC } from 'react';
 import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw, Users, AlertCircle } from 'lucide-react';
 import { ClubStats, GolfHole, HoleScore, RoundHistory } from '../types';
 
@@ -234,18 +233,20 @@ interface PlayerScoreState {
     pens: number;
 }
 
-const PlayerRow = ({ 
+interface PlayerRowProps {
+    player: string;
+    data: PlayerScoreState;
+    isCurrentPlayer: boolean;
+    par: number;
+    onUpdate: (field: keyof PlayerScoreState, delta: number) => void;
+}
+
+const PlayerRow: FC<PlayerRowProps> = ({ 
     player, 
     data, 
     isCurrentPlayer, 
     par, 
     onUpdate 
-}: { 
-    player: string, 
-    data: PlayerScoreState, 
-    isCurrentPlayer: boolean, 
-    par: number, 
-    onUpdate: (field: keyof PlayerScoreState, delta: number) => void 
 }) => (
       <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 mb-3 animate-in slide-in-from-right-4">
           <div className="flex justify-between items-center mb-2">
@@ -489,8 +490,8 @@ export const FullScorecardModal = ({
       </div>
       <div className="flex-1 overflow-auto p-0 bg-gray-900">
         <div className="min-w-max">
-            <div className="grid bg-gray-800 border-b border-gray-700 sticky top-0 z-10" style={{ gridTemplateColumns: `50px repeat(${cards.length}, minmax(80px, 1fr))` }}>
-                <div className="p-3 text-xs font-bold text-gray-500 uppercase">Hole</div>
+            <div className="grid bg-gray-800 border-b border-gray-700 sticky top-0 z-10" style={{ gridTemplateColumns: `60px repeat(${cards.length}, minmax(80px, 1fr))` }}>
+                <div className="p-3 text-xs font-bold text-gray-500 uppercase flex items-center justify-center">Hole</div>
                 {cards.map((c, i) => (
                     <div key={i} className="p-3 text-xs font-bold text-white text-center truncate border-l border-gray-700">
                         {c.player?.replace('Guest: ', '') || 'Player'}
@@ -499,8 +500,11 @@ export const FullScorecardModal = ({
             </div>
             
             {holes.map(h => (
-                <div key={h.number} className="grid border-b border-gray-800/50 hover:bg-gray-800/30" style={{ gridTemplateColumns: `50px repeat(${cards.length}, minmax(80px, 1fr))` }}>
-                    <div className="p-3 text-sm font-bold text-gray-400 text-center bg-gray-900/50 sticky left-0">{h.number}</div>
+                <div key={h.number} className="grid border-b border-gray-800/50 hover:bg-gray-800/30" style={{ gridTemplateColumns: `60px repeat(${cards.length}, minmax(80px, 1fr))` }}>
+                    <div className="p-2 text-sm font-bold text-gray-400 text-center bg-gray-900/50 sticky left-0 flex flex-col justify-center border-r border-gray-800">
+                        <span className="leading-none text-white">{h.number}</span>
+                        <span className="text-[9px] text-gray-500 leading-none mt-1">P{h.par}</span>
+                    </div>
                     {cards.map((c, i) => {
                         const score = getScore(c, h.number);
                         let color = 'text-gray-500';
@@ -510,7 +514,7 @@ export const FullScorecardModal = ({
                             else color = 'text-white';
                         }
                         return (
-                            <div key={i} className={`p-3 text-sm text-center border-l border-gray-800 ${color}`}>
+                            <div key={i} className={`p-3 text-sm text-center border-l border-gray-800 flex items-center justify-center ${color}`}>
                                 {score || '-'}
                             </div>
                         );
@@ -518,8 +522,8 @@ export const FullScorecardModal = ({
                 </div>
             ))}
 
-            <div className="grid bg-gray-800 font-bold sticky bottom-0 z-10 border-t border-gray-700" style={{ gridTemplateColumns: `50px repeat(${cards.length}, minmax(80px, 1fr))` }}>
-                <div className="p-3 text-xs text-gray-400 uppercase">TOT</div>
+            <div className="grid bg-gray-800 font-bold sticky bottom-0 z-10 border-t border-gray-700" style={{ gridTemplateColumns: `60px repeat(${cards.length}, minmax(80px, 1fr))` }}>
+                <div className="p-3 text-xs text-gray-400 uppercase flex items-center justify-center">TOT</div>
                 {cards.map((c, i) => (
                     <div key={i} className="p-3 text-white text-center border-l border-gray-700">
                         {getTotals(c)}

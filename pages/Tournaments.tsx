@@ -5,7 +5,7 @@ import { AppContext } from '../App';
 import { CloudService } from '../services/supabase';
 import { StorageService } from '../services/storage';
 import { Tournament, LeaderboardEntry, GolfCourse } from '../types';
-import { Trophy, Plus, User, Hash, ArrowRight, Loader2, Calendar, MapPin, Play, Eye, Users, CheckCircle2, QrCode, UserPlus, AlertTriangle } from 'lucide-react';
+import { Trophy, Plus, User, Hash, ArrowRight, Loader2, Calendar, MapPin, Play, Eye, Users, CheckCircle2, QrCode, UserPlus, AlertTriangle, CheckSquare, Square } from 'lucide-react';
 import { ModalOverlay } from '../components/Modals';
 
 const Tournaments = () => {
@@ -37,7 +37,9 @@ const Tournaments = () => {
     // Scorer Mode State
     const [participants, setParticipants] = useState<string[]>([]);
     const [showScorerModal, setShowScorerModal] = useState(false);
-    const [selectedPlayerToScore, setSelectedPlayerToScore] = useState<string | null>(null);
+    // Changed from single select to multi-select Set
+    const [scoringGroup, setScoringGroup] = useState<Set<string>>(new Set());
+    
     const [showAddGuest, setShowAddGuest] = useState(false);
     const [guestName, setGuestName] = useState('');
 
@@ -120,17 +122,32 @@ const Tournaments = () => {
 
     const initiatePlay = () => {
         if (!activeTournament) return;
-        // Open modal to choose who to score for
-        setSelectedPlayerToScore(safeName(user)); // Default to self
+        // Default group: Just me
+        setScoringGroup(new Set([safeName(user)]));
         setShowScorerModal(true);
     };
 
-    const startRoundForPlayer = () => {
-        if (!activeTournament || !selectedPlayerToScore) return;
+    const toggleGroupMember = (name: string) => {
+        const newSet = new Set(scoringGroup);
+        if (newSet.has(name)) {
+            newSet.delete(name);
+        } else {
+            newSet.add(name);
+        }
+        setScoringGroup(newSet);
+    };
+
+    const startRoundForGroup = () => {
+        if (!activeTournament) return;
         
+        const groupList = Array.from(scoringGroup);
+        if (groupList.length === 0) {
+            alert("Please select at least one player to score for.");
+            return;
+        }
+
         // Find the course object
         const allCourses = StorageService.getAllCourses();
-        // Match by ID or Name (Fallback)
         let course = allCourses.find(c => c.id === activeTournament.courseId || c.name === activeTournament.courseName);
         
         if (!course) {
@@ -138,21 +155,20 @@ const Tournaments = () => {
             return;
         }
 
-        const playerName = safeName(selectedPlayerToScore);
         const userName = safeName(user);
-
-        // Build the group list: "Me" + All Guests + Any selected teammates if we implement selection later
-        // For now, let's include the user AND any guests they added in this session to the group
-        const sessionGuests = participants.filter(p => p.startsWith('Guest: '));
-        const group = Array.from(new Set([playerName, userName, ...sessionGuests]));
+        
+        // Determine "Primary Player" (whose perspective shows on GPS)
+        // If "Me" is in the group, I am primary. If I'm scoring for others (Caddie mode), pick the first selected.
+        const isUserPlaying = groupList.includes(userName);
+        const primaryPlayer = isUserPlaying ? undefined : groupList[0];
 
         setShowScorerModal(false);
         navigate('/play', { 
             state: { 
                 course, 
                 tournamentId: activeTournament.id,
-                playerOverride: playerName === userName ? undefined : playerName,
-                group: group // Pass the full group list to enable multi-scoring
+                playerOverride: primaryPlayer,
+                group: groupList // Pass full list for multi-column scoring
             } 
         });
     };
@@ -174,6 +190,8 @@ const Tournaments = () => {
         const res = await CloudService.joinTournament(activeTournament.joinCode, nameToAdd);
         if(res.success) {
             setParticipants(prev => [...prev, nameToAdd]);
+            // Auto-select the new guest
+            setScoringGroup(prev => new Set(prev).add(nameToAdd));
             setGuestName('');
             setShowAddGuest(false);
         } else {
@@ -299,33 +317,36 @@ const Tournaments = () => {
                     </ModalOverlay>
                 )}
 
-                {/* SCORER MODAL */}
+                {/* SCORER MODAL (Multi-Select) */}
                 {showScorerModal && (
                     <ModalOverlay onClose={() => setShowScorerModal(false)}>
                         <div className="p-4 border-b border-gray-800 bg-gray-900 shrink-0">
                             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Users size={18} className="text-blue-500"/> Who are you scoring for?
+                                <Users size={18} className="text-blue-500"/> Select Group Members
                             </h3>
+                            <p className="text-xs text-gray-500 mt-1">Check everyone you want to score for.</p>
                         </div>
                         <div className="p-4 bg-gray-900 max-h-[60vh] overflow-y-auto space-y-2">
+                            {/* ME */}
                             <button
-                                onClick={() => setSelectedPlayerToScore(safeName(user))}
-                                className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selectedPlayerToScore === safeName(user) ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                                onClick={() => toggleGroupMember(safeName(user))}
+                                className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${scoringGroup.has(safeName(user)) ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
                             >
                                 <span className="font-bold flex items-center gap-2"><User size={16}/> Me ({safeName(user)})</span>
-                                {selectedPlayerToScore === safeName(user) && <CheckCircle2 size={20} className="text-blue-500"/>}
+                                {scoringGroup.has(safeName(user)) ? <CheckSquare size={20} className="text-blue-500"/> : <Square size={20} />}
                             </button>
                             
-                            <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-4 mb-2">Participants</div>
+                            <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-4 mb-2">Other Participants</div>
                             
+                            {/* OTHERS */}
                             {participants.map(p => safeName(p)).filter(p => p !== safeName(user)).map(p => (
                                 <button
                                     key={p}
-                                    onClick={() => setSelectedPlayerToScore(p)}
-                                    className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selectedPlayerToScore === p ? 'bg-orange-600/20 border-orange-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                                    onClick={() => toggleGroupMember(p)}
+                                    className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${scoringGroup.has(p) ? 'bg-orange-600/20 border-orange-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
                                 >
                                     <span className="font-bold">{p}</span>
-                                    {selectedPlayerToScore === p && <CheckCircle2 size={20} className="text-orange-500"/>}
+                                    {scoringGroup.has(p) ? <CheckSquare size={20} className="text-orange-500"/> : <Square size={20}/>}
                                 </button>
                             ))}
                             
@@ -341,7 +362,7 @@ const Tournaments = () => {
                                     />
                                     <div className="flex gap-2">
                                         <button onClick={() => setShowAddGuest(false)} className="flex-1 bg-gray-700 text-xs py-2 rounded">Cancel</button>
-                                        <button onClick={addGuestPlayer} className="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold">Add</button>
+                                        <button onClick={addGuestPlayer} className="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold">Add & Check</button>
                                     </div>
                                 </div>
                             ) : (
@@ -355,10 +376,11 @@ const Tournaments = () => {
                         </div>
                         <div className="p-4 bg-gray-900 border-t border-gray-800">
                             <button 
-                                onClick={startRoundForPlayer}
-                                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl"
+                                onClick={startRoundForGroup}
+                                disabled={scoringGroup.size === 0}
+                                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:bg-gray-700 text-white font-bold py-3 rounded-xl"
                             >
-                                Start Round {selectedPlayerToScore !== safeName(user) ? `for ${selectedPlayerToScore}` : ''}
+                                Start Round ({scoringGroup.size})
                             </button>
                         </div>
                     </ModalOverlay>
