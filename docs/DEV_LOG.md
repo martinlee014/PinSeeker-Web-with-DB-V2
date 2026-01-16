@@ -1,10 +1,29 @@
 
 # PinSeeker Web - Development Log
 
+## Version: V7.25.0 (Social & Scorer Expansion)
+**Date:** 2024-06-11
+**Branch:** `main`
+**Status:** ✅ CURRENT
+
+### Features
+- **QR Code Invites**:
+  - Added dynamic QR Code generation in the Tournament Lobby.
+  - Implemented `joinCode` URL parameter handling. Scanning the QR code now opens the app and auto-joins the specific tournament after login.
+  - Added network connectivity checks to warn developers if QR codes point to `localhost` instead of Network IP.
+- **Guest Player Management**:
+  - Hosts can now manually add "Guest Players" (e.g., teammates without phones) to a tournament.
+  - Guests appear in the participants list and can be selected for scoring.
+- **Multi-Player Scoring Sync**:
+  - Refactored `ScoreModal` to support tabbed scoring for multiple players simultaneously.
+  - Implemented `submitHoleScore` atomic database transaction. Scoring for a friend now updates their specific record in the cloud without overwriting the scorer's own round data.
+- **Onboarding Polish**:
+  - Integrated HDCP setup directly into the Login flow for new users to ensure accurate dispersion data immediately upon account creation.
+
 ## Version: V7.24.4 (Tournament Scorer & Stability)
 **Date:** 2024-06-10
 **Branch:** `main`
-**Status:** ✅ CURRENT
+**Status:** ✅ ARCHIVED
 
 ### Features
 - **Tournament Scorer Mode (Caddie Mode)**:

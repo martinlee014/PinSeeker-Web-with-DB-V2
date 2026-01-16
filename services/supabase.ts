@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { GolfCourse, ClubStats, RoundHistory, Tournament, LeaderboardEntry } from '../types';
+import { GolfCourse, ClubStats, RoundHistory, Tournament, LeaderboardEntry, HoleScore } from '../types';
 
 // ---------------------------------------------------------
 // CONFIGURATION
@@ -262,6 +262,70 @@ export const CloudService = {
 
       // Sort by Score (ASC)
       return entries.sort((a, b) => a.totalScore - b.totalScore);
+  },
+
+  // ---------------------------------------------------
+  // SCORE SYNCING (New)
+  // ---------------------------------------------------
+
+  submitHoleScore: async (tournamentId: string, username: string, holeScore: HoleScore, courseName: string): Promise<void> => {
+      const supabase = getClient();
+      if (!supabase) return;
+
+      // 1. Fetch existing round data for this user in this tournament
+      const { data, error } = await supabase
+          .from('user_rounds')
+          .select('*')
+          .eq('tournament_id', tournamentId)
+          .eq('username', username)
+          .single();
+
+      let roundData: RoundHistory;
+
+      if (!data) {
+          // Create new skeleton round
+          roundData = {
+              id: crypto.randomUUID(),
+              date: new Date().toLocaleString(),
+              courseName: courseName,
+              scorecard: [holeScore],
+              shots: [],
+              tournamentId: tournamentId,
+              player: username
+          };
+      } else {
+          // Update existing round
+          roundData = data.round_data;
+          // Remove old score for this hole if exists, then push new
+          roundData.scorecard = roundData.scorecard.filter(h => h.holeNumber !== holeScore.holeNumber);
+          roundData.scorecard.push(holeScore);
+          // Sort scorecard
+          roundData.scorecard.sort((a, b) => a.holeNumber - b.holeNumber);
+      }
+
+      // 2. Upsert
+      const payload = {
+          tournament_id: tournamentId,
+          username: username,
+          course_name: courseName,
+          scorecard: roundData.scorecard,
+          shots: roundData.shots,
+          round_data: roundData
+      };
+
+      // We use unique constraint on (tournament_id, username) in the DB (implied logic, or we rely on ID if we had it)
+      // Since we selected by ID earlier, we can update. If new, insert.
+      
+      if (data) {
+          await supabase
+              .from('user_rounds')
+              .update(payload)
+              .eq('id', data.id);
+      } else {
+          await supabase
+              .from('user_rounds')
+              .insert(payload);
+      }
   },
 
   // ---------------------------------------------------

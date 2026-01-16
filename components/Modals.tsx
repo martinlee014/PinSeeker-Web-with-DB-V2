@@ -1,6 +1,6 @@
 
 import { useState, ReactNode, ChangeEvent, useEffect } from 'react';
-import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw } from 'lucide-react';
+import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw, Users } from 'lucide-react';
 import { ClubStats, GolfHole, HoleScore } from '../types';
 
 export const ModalOverlay = ({ children, onClose }: { children?: ReactNode, onClose?: () => void }) => (
@@ -159,41 +159,79 @@ export const ConfirmClubSyncModal = ({
     );
 };
 
+// --- MULTI-PLAYER SCORE MODAL ---
+interface PlayerScoreState {
+    totalScore: number;
+    putts: number;
+    pens: number;
+}
+
 export const ScoreModal = ({ 
   par, 
   holeNum, 
   recordedShots,
+  currentPlayer,
+  players = [], // List of all player names to score for
   onSave, 
   onClose 
 }: { 
   par: number, 
   holeNum: number, 
   recordedShots: number,
-  onSave: (totalScore: number, putts: number, pens: number) => void, 
+  currentPlayer: string,
+  players?: string[],
+  onSave: (scores: Record<string, PlayerScoreState>) => void, 
   onClose: () => void 
 }) => {
-  const [putts, setPutts] = useState(2);
-  const [pens, setPens] = useState(0);
-  const [totalScore, setTotalScore] = useState(Math.max(par, recordedShots + 2 + 0));
+  // State maps player name to their score object
+  const [allScores, setAllScores] = useState<Record<string, PlayerScoreState>>({});
+  const [activeTab, setActiveTab] = useState(currentPlayer);
 
-  const handlePuttChange = (delta: number) => {
-      const newPutts = Math.max(0, putts + delta);
-      const diff = newPutts - putts;
-      setPutts(newPutts);
-      setTotalScore(prev => Math.max(1, prev + diff));
+  // Initialize defaults
+  useEffect(() => {
+      const initial: Record<string, PlayerScoreState> = {};
+      
+      // Ensure we have a list including current player
+      const list = players.length > 0 ? players : [currentPlayer];
+      
+      list.forEach(p => {
+          // For the main player (who is tracking shots), default to recordedShots + 2 putts
+          // For others, default to Par (or Par+1/2 based on typical)
+          const isMain = p === currentPlayer;
+          initial[p] = {
+              putts: 2,
+              pens: 0,
+              totalScore: isMain ? Math.max(par, recordedShots + 2) : par
+          };
+      });
+      setAllScores(initial);
+      setActiveTab(currentPlayer);
+  }, [players, currentPlayer, par, recordedShots]);
+
+  const updateScore = (player: string, field: keyof PlayerScoreState, delta: number) => {
+      setAllScores(prev => {
+          const pScore = { ...prev[player] };
+          
+          if (field === 'totalScore') {
+              // Ensure total score doesn't drop below putts + pens + 1
+              const minScore = pScore.putts + pScore.pens + 1;
+              pScore.totalScore = Math.max(minScore, pScore.totalScore + delta);
+          } else if (field === 'putts') {
+              pScore.putts = Math.max(0, pScore.putts + delta);
+              // Update total if putts change
+              const diff = delta > 0 ? 1 : -1; // Approximation
+              // Ideally re-calc total based on changed component, but "Total" is the primary input in golf
+              // Usually we want total to move with putts
+              pScore.totalScore = Math.max(1, pScore.totalScore + (pScore.putts - (prev[player].putts))); 
+          } else if (field === 'pens') {
+              pScore.pens = Math.max(0, pScore.pens + delta);
+              pScore.totalScore = Math.max(1, pScore.totalScore + (pScore.pens - (prev[player].pens)));
+          }
+          return { ...prev, [player]: pScore };
+      });
   };
 
-  const handlePenChange = (delta: number) => {
-      const newPens = Math.max(0, pens + delta);
-      const diff = newPens - pens;
-      setPens(newPens);
-      setTotalScore(prev => Math.max(1, prev + diff));
-  };
-
-  const handleTotalChange = (delta: number) => {
-      const minScore = putts + pens + 1;
-      setTotalScore(prev => Math.max(minScore, prev + delta));
-  };
+  const currentData = allScores[activeTab] || { totalScore: par, putts: 2, pens: 0 };
 
   const Stepper = ({ label, val, onChange, color = "bg-gray-700" }: any) => (
     <div className="flex items-center justify-between bg-gray-800 p-3 rounded-xl mb-3 border border-gray-700">
@@ -216,37 +254,58 @@ export const ScoreModal = ({
         <h3 className="text-lg font-bold text-white">Hole {holeNum} Result</h3>
         <button type="button" onClick={onClose}><X className="text-gray-400" /></button>
       </div>
+      
+      {/* Player Tabs */}
+      {Object.keys(allScores).length > 1 && (
+          <div className="bg-gray-900 p-2 flex gap-2 overflow-x-auto border-b border-gray-800">
+              {Object.keys(allScores).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setActiveTab(p)}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${activeTab === p ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}
+                  >
+                      {p === currentPlayer ? 'Me' : p.replace('Guest: ', '')}
+                      <span className="ml-1 opacity-70">({allScores[p].totalScore})</span>
+                  </button>
+              ))}
+          </div>
+      )}
+
       <div className="p-6 overflow-y-auto">
         <div className="text-center mb-8 bg-gray-800/50 p-4 rounded-2xl border border-gray-700 relative">
-            <div className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-2">Total Score</div>
+            <div className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-2">Total Score ({activeTab === currentPlayer ? 'You' : activeTab.replace('Guest: ', '')})</div>
             <div className="flex items-center justify-center gap-6">
-                <button onClick={() => handleTotalChange(-1)} className="w-12 h-12 rounded-full bg-gray-700 text-white flex items-center justify-center hover:bg-gray-600 active:scale-95 transition-all">
+                <button onClick={() => updateScore(activeTab, 'totalScore', -1)} className="w-12 h-12 rounded-full bg-gray-700 text-white flex items-center justify-center hover:bg-gray-600 active:scale-95 transition-all">
                     <Minus size={24}/>
                 </button>
-                <span className={`text-6xl font-black ${totalScore < par ? 'text-red-500' : totalScore > par ? 'text-blue-500' : 'text-white'}`}>
-                    {totalScore}
+                <span className={`text-6xl font-black ${currentData.totalScore < par ? 'text-red-500' : currentData.totalScore > par ? 'text-blue-500' : 'text-white'}`}>
+                    {currentData.totalScore}
                 </span>
-                <button onClick={() => handleTotalChange(1)} className="w-12 h-12 rounded-full bg-green-600 text-white flex items-center justify-center hover:bg-green-500 active:scale-95 transition-all shadow-lg shadow-green-900/50">
+                <button onClick={() => updateScore(activeTab, 'totalScore', 1)} className="w-12 h-12 rounded-full bg-green-600 text-white flex items-center justify-center hover:bg-green-500 active:scale-95 transition-all shadow-lg shadow-green-900/50">
                     <Plus size={24}/>
                 </button>
             </div>
             <div className="mt-2 text-sm text-gray-400">Par {par}</div>
         </div>
         <div className="space-y-1">
-            <Stepper label="Putts" val={putts} onChange={handlePuttChange} />
-            <Stepper label="Penalties" val={pens} onChange={handlePenChange} color="bg-red-900/40" />
+            <Stepper label="Putts" val={currentData.putts} onChange={(d: number) => updateScore(activeTab, 'putts', d)} />
+            <Stepper label="Penalties" val={currentData.pens} onChange={(d: number) => updateScore(activeTab, 'pens', d)} color="bg-red-900/40" />
         </div>
-        <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-500/20 mb-4 mt-4 text-center">
-            <p className="text-xs text-blue-300">
-                Calculated Shots to Green: <span className="font-bold text-white text-sm">{Math.max(0, totalScore - putts - pens)}</span>
-            </p>
-        </div>
+        
+        {activeTab === currentPlayer && (
+            <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-500/20 mb-4 mt-4 text-center">
+                <p className="text-xs text-blue-300">
+                    Calculated Shots to Green: <span className="font-bold text-white text-sm">{Math.max(0, currentData.totalScore - currentData.putts - currentData.pens)}</span>
+                </p>
+            </div>
+        )}
+
         <button 
           type="button"
-          onClick={() => onSave(totalScore, putts, pens)}
-          className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95"
+          onClick={() => onSave(allScores)}
+          className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95 mt-4"
         >
-          <Check size={20} /> Save Scorecard
+          <Check size={20} /> Save All Scores
         </button>
       </div>
     </ModalOverlay>

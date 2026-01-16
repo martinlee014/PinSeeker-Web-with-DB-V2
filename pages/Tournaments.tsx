@@ -141,12 +141,18 @@ const Tournaments = () => {
         const playerName = safeName(selectedPlayerToScore);
         const userName = safeName(user);
 
+        // Build the group list: "Me" + All Guests + Any selected teammates if we implement selection later
+        // For now, let's include the user AND any guests they added in this session to the group
+        const sessionGuests = participants.filter(p => p.startsWith('Guest: '));
+        const group = Array.from(new Set([playerName, userName, ...sessionGuests]));
+
         setShowScorerModal(false);
         navigate('/play', { 
             state: { 
                 course, 
                 tournamentId: activeTournament.id,
-                playerOverride: playerName === userName ? undefined : playerName
+                playerOverride: playerName === userName ? undefined : playerName,
+                group: group // Pass the full group list to enable multi-scoring
             } 
         });
     };

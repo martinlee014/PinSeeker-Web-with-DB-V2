@@ -34,13 +34,12 @@ const UserManual = () => {
         </p>
 
         <Section 
-          title="Tournament Scorer Mode (New)"
+          title="Events & Social Play (New)"
           items={[
-            '**Proxy Scoring:** You can now keep score for other players in a tournament (Caddie Mode).',
-            '**How to Use:** When you click "Play Round" inside a tournament, a list of all participants will appear.',
-            '**Selection:** Select "Me" to play as yourself, or tap another player name to score for them.',
-            '**Visual Indicator:** An orange banner at the top of the map will indicate exactly who you are scoring for.',
-            '**Cloud Sync:** Scores entered in this mode are saved directly to the selected player\'s leaderboard profile.'
+            '**QR Invites:** In the Tournament Lobby, tap the QR icon next to the Join Code. Friends can scan this code to launch PinSeeker and auto-join the event instantly.',
+            '**Guest Players:** If a teammate doesn\'t have a phone, the host can tap "Add Teammate / Guest" in the scoring menu to create a placeholder profile.',
+            '**Team Scoring:** You can keep score for yourself AND your guests simultaneously using the tabbed scoring modal.',
+            '**Leaderboard:** Scores entered for guests are synced to the cloud just like registered users.'
           ]}
         />
 
@@ -57,10 +56,9 @@ const UserManual = () => {
         <Section 
           title="HDCP & Skill Modeling (Auto-Bag)"
           items={[
-            '**New:** If you are unsure of your exact dispersion data, tap the "HDCP" button on the Dashboard.',
-            'Enter your current handicap and choose to "Auto-Configure Bag."',
-            'PinSeeker will generate a logically consistent 14-club bag with Carry distances and Scatter patterns (width/depth) tuned to your skill level.',
-            'Higher handicaps will show larger ellipses to help you plan for more realistic "miss" scenarios.'
+            '**New User Flow:** When logging in for the first time, you can input your Handicap (HDCP).',
+            '**Auto-Config:** PinSeeker generates a professional 14-club bag with Carry distances and Scatter patterns (width/depth) tuned to your specific skill level.',
+            '**Manual Tune:** You can always fine-tune individual clubs in Settings > Club Management later.'
           ]}
         />
 

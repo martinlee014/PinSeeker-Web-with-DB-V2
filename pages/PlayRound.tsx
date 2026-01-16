@@ -44,7 +44,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
     strokeLinejoin="round" 
     className={className}
   >
-    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
+    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
     <path d="M9 6V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
     <path d="M9 4l-2 2" />
     <path d="M15 4l2 2" />
@@ -269,6 +269,7 @@ const PlayRound = () => {
   // Scorer Mode check
   const isScorerMode = !!location.state?.playerOverride;
   const activePlayerName = location.state?.playerOverride || user || 'Guest';
+  const trackedPlayers: string[] = location.state?.group || [activePlayerName];
   
   // Safe Name Extraction helper
   const getDisplayName = (val: any) => {
@@ -694,27 +695,67 @@ const PlayRound = () => {
       setIsMenuOpen(false); // Close menu
   };
 
-  const saveHoleScore = (totalScore: number, putts: number, pens: number) => {
+  const saveHoleScore = async (scores: Record<string, {totalScore: number, putts: number, pens: number}>) => {
     if (isSaving) return;
     setIsSaving(true);
 
-    const newScore = { 
-        holeNumber: hole.number, 
-        par: Number(activePar), // Use tee-specific par
-        shotsTaken: Math.max(0, totalScore - putts - pens), 
-        putts, 
-        penalties: pens 
-    };
-    
-    const updatedScorecard = [...scorecard.filter(s => s.holeNumber !== hole.number), newScore];
-    setScorecard(updatedScorecard);
-    setShowScoreModal(false);
-    
-    if (currentHoleIdx < activeCourse.holes.length - 1) {
-        loadHole(currentHoleIdx + 1);
+    try {
+        // 1. Process Main Player (Current View)
+        const mainScore = scores[scorerDisplayName];
+        if (mainScore) {
+            const newScore: HoleScore = { 
+                holeNumber: hole.number, 
+                par: Number(activePar),
+                shotsTaken: Math.max(0, mainScore.totalScore - mainScore.putts - mainScore.pens), 
+                putts: mainScore.putts, 
+                penalties: mainScore.pens 
+            };
+            const updatedScorecard = [...scorecard.filter(s => s.holeNumber !== hole.number), newScore];
+            setScorecard(updatedScorecard);
+        }
+
+        // 2. Process All Players (Cloud Sync)
+        if (tournamentId && isOnline) {
+            const playerPromises = Object.keys(scores).map(playerName => {
+                const s = scores[playerName];
+                const holeData: HoleScore = {
+                    holeNumber: hole.number,
+                    par: Number(activePar),
+                    shotsTaken: Math.max(0, s.totalScore - s.putts - s.pens),
+                    putts: s.putts,
+                    penalties: s.pens
+                };
+                // Submit hole score individually to avoid overwriting full round data blindly
+                return CloudService.submitHoleScore(tournamentId, playerName, holeData, activeCourse.name);
+            });
+            await Promise.all(playerPromises);
+        }
+
+        setShowScoreModal(false);
+        
+        if (currentHoleIdx < activeCourse.holes.length - 1) {
+            loadHole(currentHoleIdx + 1);
+        } else {
+            // Re-construct final scorecard for main player to pass to finish
+            const mainFinalScore = scores[scorerDisplayName];
+            let finalCard = scorecard;
+            if (mainFinalScore) {
+                 const newScore: HoleScore = { 
+                    holeNumber: hole.number, 
+                    par: Number(activePar),
+                    shotsTaken: Math.max(0, mainFinalScore.totalScore - mainFinalScore.putts - mainFinalScore.pens), 
+                    putts: mainFinalScore.putts, 
+                    penalties: mainFinalScore.pens 
+                };
+                finalCard = [...scorecard.filter(s => s.holeNumber !== hole.number), newScore];
+            }
+            finishRound(finalCard);
+        }
+    } catch (e) {
+        console.error("Error saving score:", e);
+        alert("Failed to save score. Check connection.");
+    } finally {
         setIsSaving(false);
-    } else {
-        finishRound(updatedScorecard);
     }
   };
 
@@ -1263,7 +1304,7 @@ const PlayRound = () => {
       )}
 
       {showHoleSelect && <HoleSelectorModal holes={activeCourse.holes} currentIdx={currentHoleIdx} onSelect={loadHole} onClose={() => setShowHoleSelect(false)} />}
-      {showScoreModal && <ScoreModal par={activePar} holeNum={hole.number} recordedShots={Math.max(0, shotNum - 1)} onSave={saveHoleScore} onClose={() => setShowScoreModal(false)} />}
+      {showScoreModal && <ScoreModal par={activePar} holeNum={hole.number} recordedShots={Math.max(0, shotNum - 1)} currentPlayer={scorerDisplayName} players={trackedPlayers} onSave={saveHoleScore} onClose={() => setShowScoreModal(false)} />}
       {showFullCard && <FullScorecardModal holes={activeCourse.holes} scorecard={scorecard} onFinishRound={() => finishRound()} onClose={() => setShowFullCard(false)} />}
       {pendingShot && <ShotConfirmModal dist={MathUtils.formatDistance(pendingShot.dist, useYards)} club={selectedClub} clubs={bag} isGPS={pendingShot.isGPS} isLongDistWarning={pendingShot.dist > 500} onChangeClub={setSelectedClub} onConfirm={confirmShot} onCancel={() => setPendingShot(null)} />}
       
