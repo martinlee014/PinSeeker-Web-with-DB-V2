@@ -12,25 +12,29 @@ PinSeeker is not just a GPS rangefinder. It is a precision tool built for golfer
 *   **Plan for the Miss**: Input your carry distance, side error, and depth error for every club.
 *   **Visual Confidence**: See your potential landing zones (blue ellipses) on the map. Avoid hazards by understanding your statistical spread, not just the perfect number.
 
-### 2. Cloud Ecosystem & Multi-User ☁️
+### 2. Tournament Scorer (Caddie Mode) 🏆
+*   **Proxy Scoring**: Score for any participant in a tournament directly from your device.
+*   **Real-time Leaderboards**: Scores entered for others are synced instantly to the global event leaderboard.
+
+### 3. Cloud Ecosystem & Multi-User ☁️
 *   **Auto-Sync**: Your club data and round history are automatically backed up to the cloud.
 *   **Cross-Device**: Seamlessly switch between phone and tablet.
 *   **Single-Session**: Security protocols ensure your account is only active on one device at a time to prevent data conflicts.
 
-### 3. Advanced Rangefinder & Planning
+### 4. Advanced Rangefinder & Planning
 *   **Measurement Mode**: Built-in "My Location" snapping allows instant measurements from where you stand to any layup point or the pin.
 *   **Plays-Like Distance**: Integrated Visual Wind Compass calculates environmental adjustments automatically.
 
-### 4. Interactive Strategy Board
+### 5. Interactive Strategy Board
 *   **Coach's Eye**: Draw flight paths, mark hazards, or drop strategy pins directly on the satellite map.
 *   **Quick Editing**: Includes an Eraser tool and intuitive touch gestures to manage your notes on the fly.
 
-### 5. DIY Course Editor
+### 6. DIY Course Editor
 *   **Limitless Database**: Create high-precision maps for any course in the world using the built-in editor.
 *   **Precision Control**: Deep zoom (Level 22) and drag-and-drop markers allow for exact Tee and Green placement.
 *   **Cloud Library**: Share and download custom courses via Supabase integration.
 
-### 6. Seamless Tracking
+### 7. Seamless Tracking
 *   **Smart GPS**: One-tap shot recording and long-press Tee updates.
 *   **Replay Mode**: Review every shot of your round on the map after you finish, analyzing your performance hole-by-hole.
 
@@ -65,7 +69,7 @@ git init
 git add .
 
 # 3. Commit the changes
-git commit -m "feat: integrate supabase course database"
+git commit -m "feat: add tournament scorer mode and fix rendering bug"
 
 # 4. Ensure you are on the main branch
 git branch -M main

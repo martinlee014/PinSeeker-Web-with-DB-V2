@@ -34,7 +34,18 @@ const UserManual = () => {
         </p>
 
         <Section 
-          title="Cloud Profile & Sync (Updated)"
+          title="Tournament Scorer Mode (New)"
+          items={[
+            '**Proxy Scoring:** You can now keep score for other players in a tournament (Caddie Mode).',
+            '**How to Use:** When you click "Play Round" inside a tournament, a list of all participants will appear.',
+            '**Selection:** Select "Me" to play as yourself, or tap another player name to score for them.',
+            '**Visual Indicator:** An orange banner at the top of the map will indicate exactly who you are scoring for.',
+            '**Cloud Sync:** Scores entered in this mode are saved directly to the selected player\'s leaderboard profile.'
+          ]}
+        />
+
+        <Section 
+          title="Cloud Profile & Sync"
           items={[
             '**Login:** Enter a unique Username to access your personal data.',
             '**Auto-Sync:** Your Club Data (Bag) and Round History are automatically backed up to the cloud.',

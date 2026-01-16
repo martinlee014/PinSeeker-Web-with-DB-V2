@@ -1,10 +1,26 @@
 
 # PinSeeker Web - Development Log
 
+## Version: V7.24.4 (Tournament Scorer & Stability)
+**Date:** 2024-06-10
+**Branch:** `main`
+**Status:** ✅ CURRENT
+
+### Features
+- **Tournament Scorer Mode (Caddie Mode)**:
+  - Added ability for a user to score for *other* participants in a tournament.
+  - New "Who are you scoring for?" modal when starting a tournament round.
+  - UI Indicator: Added a high-visibility orange banner in `PlayRound` when scoring for another player (e.g., "Scoring for: Tiger").
+  - Scores are automatically saved and synced under the target player's username, not the device owner's.
+
+### Fixes
+- **Critical UI Fix**: Resolved persistent `[object Object]` rendering issues in the Dashboard and Scorer headers caused by legacy user objects in local storage. Implemented strict type sanitization for display names.
+- **Course Data**: Corrected coordinate data for **Duvenhof Hole 13 Tee** location.
+
 ## Version: V7.22.0 (Data Conflict Resolution)
 **Date:** 2024-06-09
 **Branch:** `main`
-**Status:** ✅ CURRENT
+**Status:** ✅ ARCHIVED
 
 ### Features & Fixes
 - **Sync Conflict UI**:
