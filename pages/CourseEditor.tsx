@@ -3,7 +3,7 @@ import { useState, useContext, Fragment, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents, Polygon, Polyline } from 'react-leaflet';
 import L from 'leaflet';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { AppContext } from '../App';
 import { StorageService } from '../services/storage';
 import * as MathUtils from '../services/mathUtils';
@@ -111,24 +111,27 @@ const CourseEditor = () => {
       }
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      // We do not use responseSchema here because Google Search tool output might conflict with strict JSON schema.
+      // Instead, we prompt for JSON and parse the text manually.
+      const prompt = `Find the precise coordinates for golf course: ${courseName} ${country}. 
+      Return ONLY a JSON object with keys: lat (number), lng (number), found (boolean).
+      Example: {"lat": 34.0, "lng": -118.0, "found": true}`;
+
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Find the precise coordinates for golf course: ${courseName} ${country}`,
+        contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              lat: { type: Type.NUMBER },
-              lng: { type: Type.NUMBER },
-              found: { type: Type.BOOLEAN }
-            }
-          }
         },
       });
 
-      const res = JSON.parse(response.text || '{}');
+      let jsonStr = response.text || "{}";
+      // Sanitize markdown if present
+      jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      const res = JSON.parse(jsonStr);
+      
       if (res.found && res.lat && res.lng) {
         setMapCenter([res.lat, res.lng]);
         setStep('map');
@@ -137,7 +140,7 @@ const CourseEditor = () => {
       }
     } catch (e: any) {
       console.error("AI Search Error:", e);
-      alert("Search sync failed.");
+      alert("Search sync failed: " + (e.message || "Unknown error"));
     } finally {
       setIsSearching(false);
     }

@@ -5,7 +5,7 @@ import { AppContext } from '../App';
 import { CloudService } from '../services/supabase';
 import { StorageService } from '../services/storage';
 import { Tournament, LeaderboardEntry, GolfCourse } from '../types';
-import { Trophy, Plus, User, Hash, ArrowRight, Loader2, Calendar, MapPin, Play, Eye } from 'lucide-react';
+import { Trophy, Plus, User, Hash, ArrowRight, Loader2, Calendar, MapPin, Play, Eye, Users, CheckCircle2 } from 'lucide-react';
 import { ModalOverlay } from '../components/Modals';
 
 const Tournaments = () => {
@@ -32,6 +32,11 @@ const Tournaments = () => {
     const [activeTournament, setActiveTournament] = useState<Tournament | null>(null);
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [isLoadingLB, setIsLoadingLB] = useState(false);
+
+    // Scorer Mode State
+    const [participants, setParticipants] = useState<string[]>([]);
+    const [showScorerModal, setShowScorerModal] = useState(false);
+    const [selectedPlayerToScore, setSelectedPlayerToScore] = useState<string | null>(null);
 
     useEffect(() => {
         loadTournaments();
@@ -92,30 +97,43 @@ const Tournaments = () => {
         setActiveTournament(t);
         setIsLoadingLB(true);
         try {
-            const lb = await CloudService.getTournamentLeaderboard(t.id);
+            const [lb, parts] = await Promise.all([
+                CloudService.getTournamentLeaderboard(t.id),
+                CloudService.getTournamentParticipants(t.id)
+            ]);
             setLeaderboard(lb);
+            setParticipants(parts);
         } finally {
             setIsLoadingLB(false);
         }
     };
 
-    const playRound = () => {
+    const initiatePlay = () => {
         if (!activeTournament) return;
+        // Open modal to choose who to score for
+        setSelectedPlayerToScore(user); // Default to self
+        setShowScorerModal(true);
+    };
+
+    const startRoundForPlayer = () => {
+        if (!activeTournament || !selectedPlayerToScore) return;
+        
         // Find the course object
         const allCourses = StorageService.getAllCourses();
         // Match by ID or Name (Fallback)
         let course = allCourses.find(c => c.id === activeTournament.courseId || c.name === activeTournament.courseName);
         
         if (!course) {
-            // Need to handle if course is missing locally... ideally fetch from cloud but for now alert
             alert("The course data for this tournament is not in your local library. Please download it from the Course Database first.");
             return;
         }
 
+        setShowScorerModal(false);
         navigate('/play', { 
             state: { 
                 course, 
-                tournamentId: activeTournament.id 
+                tournamentId: activeTournament.id,
+                playerOverride: selectedPlayerToScore === user ? undefined : selectedPlayerToScore
             } 
         });
     };
@@ -154,7 +172,7 @@ const Tournaments = () => {
                 <div className="bg-gradient-to-br from-blue-900/50 to-gray-900 p-6 rounded-2xl border border-blue-500/30 mb-6 text-center">
                      <h2 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">{activeTournament.courseName}</h2>
                      <button 
-                        onClick={playRound}
+                        onClick={initiatePlay}
                         className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
                      >
                          <Play fill="white" size={20} /> Play Round
@@ -199,6 +217,53 @@ const Tournaments = () => {
                             </div>
                         ))}
                     </div>
+                )}
+
+                {/* SCORER MODAL */}
+                {showScorerModal && (
+                    <ModalOverlay onClose={() => setShowScorerModal(false)}>
+                        <div className="p-4 border-b border-gray-800 bg-gray-900 shrink-0">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Users size={18} className="text-blue-500"/> Who are you scoring for?
+                            </h3>
+                        </div>
+                        <div className="p-4 bg-gray-900 max-h-[60vh] overflow-y-auto space-y-2">
+                            <button
+                                onClick={() => setSelectedPlayerToScore(user)}
+                                className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selectedPlayerToScore === user ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                            >
+                                <span className="font-bold flex items-center gap-2"><User size={16}/> Me ({user})</span>
+                                {selectedPlayerToScore === user && <CheckCircle2 size={20} className="text-blue-500"/>}
+                            </button>
+                            
+                            <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-4 mb-2">Other Participants</div>
+                            
+                            {participants.filter(p => p !== user).map(p => (
+                                <button
+                                    key={p}
+                                    onClick={() => setSelectedPlayerToScore(p)}
+                                    className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selectedPlayerToScore === p ? 'bg-orange-600/20 border-orange-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                                >
+                                    <span className="font-bold">{p}</span>
+                                    {selectedPlayerToScore === p && <CheckCircle2 size={20} className="text-orange-500"/>}
+                                </button>
+                            ))}
+                            
+                            {participants.filter(p => p !== user).length === 0 && (
+                                <div className="text-center text-gray-600 text-sm py-4 italic">
+                                    No other players have joined yet.
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 bg-gray-900 border-t border-gray-800">
+                            <button 
+                                onClick={startRoundForPlayer}
+                                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl"
+                            >
+                                Start Round {selectedPlayerToScore !== user ? `for ${selectedPlayerToScore}` : ''}
+                            </button>
+                        </div>
+                    </ModalOverlay>
                 )}
             </div>
         );

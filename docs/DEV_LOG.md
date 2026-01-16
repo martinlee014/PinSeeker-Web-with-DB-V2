@@ -1,10 +1,38 @@
 
 # PinSeeker Web - Development Log
 
+## Version: V7.24.0 (Green Orientation Fix)
+**Date:** 2024-06-10
+**Branch:** `main`
+**Status:** ✅ CURRENT
+
+### Features & Fixes
+- **Map Orientation Logic**:
+  - Fixed a UX issue where the green was appearing at the bottom of the screen instead of the top.
+  - Inverted the map container rotation (`-bearing`) so that the "Tee to Green" line points upwards (North/Top).
+- **Label Readability**:
+  - Adjusted all text labels (Distance, Notes, Measurements) to rotate in the opposite direction of the map, ensuring they remain perfectly horizontal and upright for the user regardless of hole orientation.
+
+## Version: V7.23.0 (Tournament Scorer Mode)
+**Date:** 2024-06-09
+**Branch:** `main`
+**Status:** ✅ ARCHIVED
+
+### Features & Fixes
+- **Tournament Scorer Mode**:
+  - Added ability to select a specific player to score for when starting a tournament round.
+  - Displayed a sticky banner ("Scoring for: [PlayerName]") when in scorer mode to prevent identity confusion.
+  - Scores are saved to the specific player's history, not the logged-in user's default history.
+- **Map Rotation Logic**:
+  - Fixed a critical bug where the map container was double-rotating, causing the green to drift off-screen.
+  - The green is now rigorously locked to the top of the device view for all holes.
+- **System Stability**:
+  - Implemented a robust `CloudService` mock using LocalStorage. This ensures the app functions completely offline or without Supabase credentials during development/demos.
+
 ## Version: V7.22.0 (Data Conflict Resolution)
 **Date:** 2024-06-09
 **Branch:** `main`
-**Status:** ✅ CURRENT
+**Status:** ✅ ARCHIVED
 
 ### Features & Fixes
 - **Sync Conflict UI**:

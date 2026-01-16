@@ -1,8 +1,7 @@
-
 {
   "name": "pinseeker-web",
   "private": true,
-  "version": "7.22.0",
+  "version": "7.24.0",
   "type": "module",
   "homepage": ".",
   "scripts": {

@@ -1,4 +1,5 @@
 
+
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon, WifiOff, Trophy } from 'lucide-react';
@@ -64,7 +65,7 @@ const MainLayout = ({ children }: { children?: ReactNode }) => {
   return (
     <div className="flex flex-col h-[100dvh] max-w-md mx-auto bg-black relative shadow-2xl overflow-hidden">
       {showChrome && (
-        <header className="flex items-center justify-between p-4 bg-gray-900 border-b border-gray-800 z-10 shrink-0">
+        <header className="flex items-center justify-between p-4 pt-[calc(1rem+env(safe-area-inset-top))] bg-gray-900 border-b border-gray-800 z-10 shrink-0 transition-all">
           <div className="flex items-center gap-2" onClick={() => navigate('/dashboard')}>
             <MapIcon className="text-green-500" />
             <span className="font-bold text-xl tracking-wider text-white">PINSEEKER</span>
@@ -81,7 +82,7 @@ const MainLayout = ({ children }: { children?: ReactNode }) => {
       </main>
 
       {showChrome && (
-        <nav className="flex justify-around items-center p-3 bg-gray-900 border-t border-gray-800 z-10 shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <nav className="flex justify-around items-center p-3 bg-gray-900 border-t border-gray-800 z-10 shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))] transition-all">
           <NavItem icon={<User size={24} />} label="Dash" path="/dashboard" active={location.pathname === '/dashboard'} />
           <NavItem icon={<Trophy size={24} />} label="Events" path="/tournaments" active={location.pathname === '/tournaments'} />
           <div className="relative -top-5">
@@ -217,13 +218,14 @@ const App = () => {
 
             return true;
         } else {
+            console.warn("Cloud login incomplete, using offline mode.");
             // Offline fallback
             StorageService.setCurrentUser(username);
             setUser(username);
             return true;
         }
-    } catch (e) {
-        console.error("Login Error", e);
+    } catch (e: any) {
+        console.error("Login Error:", e.message || e);
         // Fallback for offline usage
         StorageService.setCurrentUser(username);
         setUser(username);

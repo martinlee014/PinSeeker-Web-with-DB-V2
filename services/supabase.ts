@@ -1,236 +1,144 @@
+import { ClubStats, GolfCourse, RoundHistory, Tournament, LeaderboardEntry } from '../types';
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { GolfCourse, ClubStats, RoundHistory, Tournament, LeaderboardEntry } from '../types';
+// Mock implementation using LocalStorage to simulate Cloud behavior
+// This ensures the app functions without an external Supabase backend configured.
+const MOCK_DELAY = 500;
 
-// ---------------------------------------------------------
-// CONFIGURATION
-// ---------------------------------------------------------
-
-// Hardcoded Credentials as requested
-const SUPABASE_URL = 'https://ezvaynhdeygjpvuqvkbg.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_4SIUpiYqAXbR8Zdls6RN1w_2MTTLKOB';
-
-// Singleton client instance
-let clientInstance: SupabaseClient | null = null;
-
-const getClient = () => {
-    if (clientInstance) return clientInstance;
-
-    try {
-        clientInstance = createClient(SUPABASE_URL, SUPABASE_KEY);
-        return clientInstance;
-    } catch (e) {
-        console.error("Failed to initialize Supabase client", e);
-        return null;
-    }
-};
-
-// Reset function
-export const resetSupabaseClient = () => {
-    clientInstance = null;
-};
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 export const CloudService = {
-  // ---------------------------------------------------
-  // COURSE MANAGEMENT (Existing)
-  // ---------------------------------------------------
-  
+  validateSession: async (user: string, sessionId: string): Promise<boolean> => {
+    // In a real app, verify with server. Here we just return true to allow offline usage.
+    return true;
+  },
+
+  loginAndCreateSession: async (username: string) => {
+    await delay(MOCK_DELAY);
+    return {
+      success: true,
+      sessionId: 'mock-session-' + Date.now(),
+      history: [] as RoundHistory[], // Would fetch from DB
+      bag: [] as ClubStats[] // Would fetch from DB
+    };
+  },
+
+  syncBag: async (user: string, bag: ClubStats[]) => {
+    console.log(`[Cloud] Synced bag for ${user}`);
+    // No-op for mock
+  },
+
+  syncRound: async (user: string, round: RoundHistory, tournamentId?: string) => {
+    console.log(`[Cloud] Synced round for ${user}`);
+    if (tournamentId) {
+        const key = `mock_tournament_rounds_${tournamentId}`;
+        const existingStr = localStorage.getItem(key);
+        const existing = existingStr ? JSON.parse(existingStr) : [];
+        // Check for duplicates in mock
+        if (!existing.find((r: any) => r.round_data.id === round.id)) {
+             existing.push({ username: user, round_data: round });
+             localStorage.setItem(key, JSON.stringify(existing));
+        }
+    }
+  },
+
   searchCourses: async (query: string, country?: string): Promise<GolfCourse[]> => {
-    const supabase = getClient();
-    if (!supabase) throw new Error("Cloud service could not be initialized.");
+    await delay(MOCK_DELAY);
+    // Return empty or mock courses
+    return [];
+  },
 
-    let dbQuery = supabase
-      .from('courses')
-      .select('*')
-      .eq('status', 'published')
-      .ilike('name', `%${query}%`);
+  checkCourseExists: async (name: string, user: string): Promise<string | null> => {
+    await delay(MOCK_DELAY);
+    return null;
+  },
+
+  updateCourse: async (id: string, course: GolfCourse, user: string) => {
+    await delay(MOCK_DELAY);
+    return { success: true, message: "Course updated" };
+  },
+
+  uploadCourse: async (course: GolfCourse, user: string) => {
+    await delay(MOCK_DELAY);
+    return { success: true, message: "Course uploaded" };
+  },
+
+  getMyTournaments: async (user: string): Promise<Tournament[]> => {
+    await delay(MOCK_DELAY);
+    const key = `mock_user_tournaments_${user}`;
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  joinTournament: async (code: string, user: string) => {
+    await delay(MOCK_DELAY);
+    const allTournamentsStr = localStorage.getItem('mock_all_tournaments');
+    const allTournaments: Tournament[] = allTournamentsStr ? JSON.parse(allTournamentsStr) : [];
+    const found = allTournaments.find(t => t.joinCode === code);
     
-    if (country && country !== 'All') {
-        dbQuery = dbQuery.eq('data->>country', country);
+    if (found) {
+        // Add to user list
+        const userKey = `mock_user_tournaments_${user}`;
+        const userListStr = localStorage.getItem(userKey);
+        const userList: Tournament[] = userListStr ? JSON.parse(userListStr) : [];
+        if (!userList.find(t => t.id === found.id)) {
+            userList.push(found);
+            localStorage.setItem(userKey, JSON.stringify(userList));
+            
+            // Add to participants
+            const partKey = `mock_tournament_participants_${found.id}`;
+            const partsStr = localStorage.getItem(partKey);
+            const parts: any[] = partsStr ? JSON.parse(partsStr) : [];
+            if (!parts.find(p => p.username === user)) {
+                parts.push({ username: user });
+                localStorage.setItem(partKey, JSON.stringify(parts));
+            }
+        }
+        return { success: true };
     }
-
-    const { data, error } = await dbQuery.limit(50);
-
-    if (error) {
-      console.error('Error searching courses:', error);
-      throw error;
-    }
-
-    return (data || []).map((row: any) => ({
-      ...row.data,
-      id: row.id,
-      name: row.name,
-      isCloud: true,
-      isCustom: false,
-      author: row.data.author
-    }));
+    return { success: false, error: "Invalid code" };
   },
 
-  checkCourseExists: async (courseName: string, author: string): Promise<string | null> => {
-      const supabase = getClient();
-      if (!supabase) return null;
+  createTournament: async (name: string, course: GolfCourse, user: string): Promise<{ success: boolean; code?: string; error?: string }> => {
+    await delay(MOCK_DELAY);
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const newTournament: Tournament = {
+        id: crypto.randomUUID(),
+        name,
+        host: user,
+        courseId: course.id,
+        courseName: course.name,
+        joinCode: code,
+        createdAt: new Date().toISOString(),
+        status: 'active'
+    };
 
-      const { data, error } = await supabase
-        .from('courses')
-        .select('id')
-        .eq('name', courseName)
-        .eq('data->>author', author)
-        .single();
+    // Save globally
+    const allTournamentsStr = localStorage.getItem('mock_all_tournaments');
+    const allTournaments: Tournament[] = allTournamentsStr ? JSON.parse(allTournamentsStr) : [];
+    allTournaments.push(newTournament);
+    localStorage.setItem('mock_all_tournaments', JSON.stringify(allTournaments));
 
-      if (error || !data) return null;
-      return data.id;
-  },
-
-  updateCourse: async (cloudId: string, course: GolfCourse, username: string): Promise<{ success: boolean; message?: string }> => {
-      const supabase = getClient();
-      if (!supabase) return { success: false, message: "Cloud service not available." };
-
-      const coursePayload = { 
-        ...course,
-        author: username
-      };
-      
-      delete (coursePayload as any).isCloud;
-      delete (coursePayload as any).isCustom;
-      delete (coursePayload as any).id; 
+    // Add to user list
+    const userKey = `mock_user_tournaments_${user}`;
+    const userListStr = localStorage.getItem(userKey);
+    const userList: Tournament[] = userListStr ? JSON.parse(userListStr) : [];
+    userList.push(newTournament);
+    localStorage.setItem(userKey, JSON.stringify(userList));
     
-      const { error } = await supabase
-        .from('courses')
-        .update({
-            data: coursePayload,
-            updated_at: new Date().toISOString()
-        })
-        .eq('id', cloudId);
+    // Add self as participant
+    const partKey = `mock_tournament_participants_${newTournament.id}`;
+    localStorage.setItem(partKey, JSON.stringify([{ username: user }]));
 
-      if (error) return { success: false, message: error.message };
-      return { success: true };
-  },
-
-  uploadCourse: async (course: GolfCourse, username: string): Promise<{ success: boolean; message?: string }> => {
-    const supabase = getClient();
-    if (!supabase) return { success: false, message: "Cloud service not available." };
-    if (!username) return { success: false, message: "User not identified." };
-
-    const coursePayload = { ...course, author: username };
-    delete (coursePayload as any).isCloud;
-    delete (coursePayload as any).isCustom;
-    delete (coursePayload as any).id;
-    
-    const { error } = await supabase
-      .from('courses')
-      .insert({
-        name: course.name,
-        data: coursePayload,
-        status: 'published'
-      });
-
-    if (error) return { success: false, message: error.message };
-    return { success: true };
-  },
-
-  // ---------------------------------------------------
-  // TOURNAMENT MANAGEMENT (New)
-  // ---------------------------------------------------
-
-  createTournament: async (name: string, course: GolfCourse, host: string): Promise<{ success: boolean, code?: string, error?: string }> => {
-      const supabase = getClient();
-      if (!supabase) return { success: false, error: "Offline" };
-
-      // Generate a simple 6 char code
-      const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-      const { error } = await supabase
-        .from('tournaments')
-        .insert({
-            name,
-            host_username: host,
-            course_id: course.id,
-            course_name: course.name,
-            join_code: joinCode
-        });
-
-      if (error) return { success: false, error: error.message };
-
-      // Auto-join host
-      await CloudService.joinTournament(joinCode, host);
-
-      return { success: true, code: joinCode };
-  },
-
-  joinTournament: async (code: string, username: string): Promise<{ success: boolean, error?: string }> => {
-      const supabase = getClient();
-      if (!supabase) return { success: false, error: "Offline" };
-
-      // 1. Get Tournament ID
-      const { data: tData, error: tError } = await supabase
-        .from('tournaments')
-        .select('id')
-        .eq('join_code', code)
-        .single();
-      
-      if (tError || !tData) return { success: false, error: "Invalid Code" };
-
-      // 2. Join
-      const { error: pError } = await supabase
-        .from('tournament_participants')
-        .upsert({
-            tournament_id: tData.id,
-            username: username
-        }, { onConflict: 'tournament_id,username' }); // Ignore if already joined
-
-      if (pError) return { success: false, error: pError.message };
-      return { success: true };
-  },
-
-  getMyTournaments: async (username: string): Promise<Tournament[]> => {
-      const supabase = getClient();
-      if (!supabase) return [];
-
-      // Get IDs where user is participant
-      const { data: pData } = await supabase
-        .from('tournament_participants')
-        .select('tournament_id')
-        .eq('username', username);
-      
-      if (!pData || pData.length === 0) return [];
-      
-      const ids = pData.map(p => p.tournament_id);
-
-      // Get Tournament Details
-      const { data: tData } = await supabase
-        .from('tournaments')
-        .select('*')
-        .in('id', ids)
-        .order('created_at', { ascending: false });
-
-      if (!tData) return [];
-
-      return tData.map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          host: t.host_username,
-          courseId: t.course_id,
-          courseName: t.course_name,
-          joinCode: t.join_code,
-          createdAt: t.created_at,
-          status: t.status
-      }));
+    return { success: true, code };
   },
 
   getTournamentLeaderboard: async (tournamentId: string): Promise<LeaderboardEntry[]> => {
-      const supabase = getClient();
-      if (!supabase) return [];
+      await delay(MOCK_DELAY);
+      const key = `mock_tournament_rounds_${tournamentId}`;
+      const dataStr = localStorage.getItem(key);
+      if (!dataStr) return [];
+      const data = JSON.parse(dataStr);
 
-      // Fetch rounds for this tournament
-      const { data } = await supabase
-        .from('user_rounds')
-        .select('*')
-        .eq('tournament_id', tournamentId);
-      
-      if (!data) return [];
-
-      // Process rounds into leaderboard format
-      
       const entries: LeaderboardEntry[] = data.map((row: any) => {
           const r: RoundHistory = row.round_data;
           const score = r.scorecard.reduce((acc, h) => acc + h.shotsTaken + h.putts + h.penalties, 0);
@@ -238,128 +146,19 @@ export const CloudService = {
               username: row.username,
               totalScore: score,
               thru: r.scorecard.length,
-              roundData: { ...r, player: row.username } // Inject player name for display
+              roundData: { ...r, player: row.username }
           };
       });
 
-      // Sort by Score (ASC)
       return entries.sort((a, b) => a.totalScore - b.totalScore);
   },
 
-  // ---------------------------------------------------
-  // AUTH & SESSION MANAGEMENT (Existing)
-  // ---------------------------------------------------
-
-  loginAndCreateSession: async (username: string): Promise<{ 
-      success: boolean; 
-      sessionId?: string; 
-      bag?: ClubStats[]; 
-      history?: RoundHistory[] 
-  }> => {
-      const supabase = getClient();
-      if (!supabase) return { success: false };
-
-      const newSessionId = crypto.randomUUID();
-
-      // 1. Upsert Profile with new Session ID
-      const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({ 
-              username: username, 
-              current_session_id: newSessionId,
-              last_active: new Date().toISOString()
-          }, { onConflict: 'username' });
-      
-      if (profileError) {
-          console.error("Login failed:", profileError);
-          return { success: false };
-      }
-
-      // 2. Fetch User Bag
-      let bag: ClubStats[] | undefined = undefined;
-      const { data: bagData } = await supabase
-          .from('user_bags')
-          .select('bag_data')
-          .eq('username', username)
-          .single();
-      
-      if (bagData) bag = bagData.bag_data;
-
-      // 3. Fetch User History
-      let history: RoundHistory[] | undefined = undefined;
-      const { data: roundsData } = await supabase
-          .from('user_rounds')
-          .select('round_data')
-          .eq('username', username)
-          .order('created_at', { ascending: false });
-      
-      if (roundsData) {
-          history = roundsData.map((r: any) => r.round_data);
-      }
-
-      return { success: true, sessionId: newSessionId, bag, history };
-  },
-
-  validateSession: async (username: string, localSessionId: string): Promise<boolean> => {
-      const supabase = getClient();
-      if (!supabase) return true; // Fail open if offline
-
-      const { data, error } = await supabase
-          .from('profiles')
-          .select('current_session_id')
-          .eq('username', username)
-          .single();
-
-      if (error || !data) return false;
-
-      // Update last active
-      await supabase
-        .from('profiles')
-        .update({ last_active: new Date().toISOString() })
-        .eq('username', username);
-
-      return data.current_session_id === localSessionId;
-  },
-
-  // ---------------------------------------------------
-  // DATA SYNCING (Existing)
-  // ---------------------------------------------------
-
-  syncBag: async (username: string, bag: ClubStats[]) => {
-      const supabase = getClient();
-      if (!supabase) return;
-
-      const { error } = await supabase
-          .from('user_bags')
-          .upsert({ 
-              username: username, 
-              bag_data: bag,
-              updated_at: new Date().toISOString()
-          }, { onConflict: 'username' });
-      
-      if (error) console.error("Failed to sync bag:", error);
-  },
-
-  syncRound: async (username: string, round: RoundHistory, tournamentId?: string) => {
-      const supabase = getClient();
-      if (!supabase) return;
-
-      const payload: any = {
-              username: username,
-              course_name: round.courseName,
-              scorecard: round.scorecard,
-              shots: round.shots,
-              round_data: round
-      };
-
-      if (tournamentId) {
-          payload.tournament_id = tournamentId;
-      }
-
-      const { error } = await supabase
-          .from('user_rounds')
-          .insert(payload);
-      
-      if (error) console.error("Failed to upload round:", error);
+  getTournamentParticipants: async (tournamentId: string): Promise<string[]> => {
+      await delay(MOCK_DELAY);
+      const partKey = `mock_tournament_participants_${tournamentId}`;
+      const partsStr = localStorage.getItem(partKey);
+      if (!partsStr) return [];
+      const data = JSON.parse(partsStr);
+      return data.map((row: any) => row.username);
   }
 };
