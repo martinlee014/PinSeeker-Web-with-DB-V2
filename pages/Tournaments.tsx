@@ -5,7 +5,7 @@ import { AppContext } from '../App';
 import { CloudService } from '../services/supabase';
 import { StorageService } from '../services/storage';
 import { Tournament, LeaderboardEntry, GolfCourse } from '../types';
-import { Trophy, Plus, User, Hash, ArrowRight, Loader2, Calendar, MapPin, Play, Eye, Users, CheckCircle2 } from 'lucide-react';
+import { Trophy, Plus, User, Hash, ArrowRight, Loader2, Calendar, MapPin, Play, Eye, Users, CheckCircle2, QrCode, UserPlus, AlertTriangle } from 'lucide-react';
 import { ModalOverlay } from '../components/Modals';
 
 const Tournaments = () => {
@@ -28,15 +28,18 @@ const Tournaments = () => {
     const [availableCourses, setAvailableCourses] = useState<GolfCourse[]>([]);
     const [isCreating, setIsCreating] = useState(false);
 
-    // Leaderboard State
+    // Leaderboard/Detail State
     const [activeTournament, setActiveTournament] = useState<Tournament | null>(null);
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [isLoadingLB, setIsLoadingLB] = useState(false);
+    const [showInvite, setShowInvite] = useState(false);
 
     // Scorer Mode State
     const [participants, setParticipants] = useState<string[]>([]);
     const [showScorerModal, setShowScorerModal] = useState(false);
     const [selectedPlayerToScore, setSelectedPlayerToScore] = useState<string | null>(null);
+    const [showAddGuest, setShowAddGuest] = useState(false);
+    const [guestName, setGuestName] = useState('');
 
     // Helper to safely extract display name from potential objects
     const safeName = (u: any) => {
@@ -156,6 +159,22 @@ const Tournaments = () => {
         });
     };
 
+    const addGuestPlayer = async () => {
+        if(!guestName.trim() || !activeTournament) return;
+        
+        // Add prefix to distinguish guests
+        const nameToAdd = `Guest: ${guestName}`;
+        
+        const res = await CloudService.joinTournament(activeTournament.joinCode, nameToAdd);
+        if(res.success) {
+            setParticipants(prev => [...prev, nameToAdd]);
+            setGuestName('');
+            setShowAddGuest(false);
+        } else {
+            alert("Failed to add guest: " + res.error);
+        }
+    }
+
     if (!isOnline) {
         return (
             <div className="p-10 text-center text-gray-500">
@@ -167,6 +186,11 @@ const Tournaments = () => {
     }
 
     if (activeTournament) {
+        const currentUrl = `${window.location.origin}${window.location.pathname}#/?joinCode=${activeTournament.joinCode}`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentUrl)}`;
+        
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
         return (
             <div className="p-4 flex flex-col h-full bg-gray-900">
                 <div className="flex items-center gap-4 mb-6">
@@ -175,7 +199,10 @@ const Tournaments = () => {
                     </button>
                     <div className="flex-1">
                         <h1 className="text-xl font-bold text-white leading-none">{activeTournament.name}</h1>
-                        <span className="text-xs text-gray-500">Code: <span className="font-mono text-yellow-400 select-all">{activeTournament.joinCode}</span></span>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-500">Code: <span className="font-mono text-yellow-400 select-all">{activeTournament.joinCode}</span></span>
+                            <button onClick={() => setShowInvite(true)} className="bg-blue-900/50 p-1 rounded text-blue-300 hover:text-white"><QrCode size={14}/></button>
+                        </div>
                     </div>
                 </div>
 
@@ -229,6 +256,43 @@ const Tournaments = () => {
                     </div>
                 )}
 
+                {/* INVITE MODAL */}
+                {showInvite && (
+                    <ModalOverlay onClose={() => setShowInvite(false)}>
+                        <div className="p-6 bg-gray-900 text-center">
+                            <h3 className="text-xl font-bold text-white mb-4">Invite Players</h3>
+                            <div className="bg-white p-4 rounded-xl inline-block mb-4">
+                                <img src={qrUrl} alt="Join QR Code" className="w-32 h-32" />
+                            </div>
+                            <div className="bg-gray-800 p-3 rounded-lg border border-gray-700 mb-4">
+                                <div className="text-gray-500 text-xs font-bold uppercase mb-1">Join Code</div>
+                                <div className="text-2xl font-black text-white tracking-widest">{activeTournament.joinCode}</div>
+                            </div>
+                            
+                            {isLocalhost ? (
+                                <div className="bg-yellow-900/30 border border-yellow-700 p-3 rounded-lg text-left mb-4">
+                                    <div className="flex items-start gap-2">
+                                        <AlertTriangle className="text-yellow-500 shrink-0" size={16} />
+                                        <div className="text-xs text-yellow-200">
+                                            <strong>Connection Issue:</strong> You are viewing this on "localhost". Your phone cannot scan this code.
+                                            <br/><br/>
+                                            Please open this app on your computer using your <strong>Network IP</strong> (e.g. http://192.168.1.X:5173) and try again.
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-400 mb-4">
+                                    Scan to join instantly in browser.<br/>No installation required.
+                                </p>
+                            )}
+
+                            <button onClick={() => setShowInvite(false)} className="w-full bg-gray-800 text-white py-3 rounded-xl font-bold">
+                                Close
+                            </button>
+                        </div>
+                    </ModalOverlay>
+                )}
+
                 {/* SCORER MODAL */}
                 {showScorerModal && (
                     <ModalOverlay onClose={() => setShowScorerModal(false)}>
@@ -246,7 +310,7 @@ const Tournaments = () => {
                                 {selectedPlayerToScore === safeName(user) && <CheckCircle2 size={20} className="text-blue-500"/>}
                             </button>
                             
-                            <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-4 mb-2">Other Participants</div>
+                            <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-4 mb-2">Participants</div>
                             
                             {participants.map(p => safeName(p)).filter(p => p !== safeName(user)).map(p => (
                                 <button
@@ -259,10 +323,28 @@ const Tournaments = () => {
                                 </button>
                             ))}
                             
-                            {participants.length <= 1 && (
-                                <div className="text-center text-gray-600 text-sm py-4 italic">
-                                    No other players have joined yet.
+                            {showAddGuest ? (
+                                <div className="mt-4 bg-gray-800 p-3 rounded-xl border border-gray-700 animate-in slide-in-from-top-2">
+                                    <input 
+                                        autoFocus
+                                        type="text" 
+                                        placeholder="Guest Name (e.g. Tom)"
+                                        className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-white mb-2"
+                                        value={guestName}
+                                        onChange={e => setGuestName(e.target.value)}
+                                    />
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setShowAddGuest(false)} className="flex-1 bg-gray-700 text-xs py-2 rounded">Cancel</button>
+                                        <button onClick={addGuestPlayer} className="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold">Add</button>
+                                    </div>
                                 </div>
+                            ) : (
+                                <button 
+                                    onClick={() => setShowAddGuest(true)}
+                                    className="w-full py-3 mt-4 border border-dashed border-gray-700 rounded-xl text-gray-500 text-sm hover:text-white hover:border-gray-500 flex items-center justify-center gap-2"
+                                >
+                                    <UserPlus size={16}/> Add Teammate / Guest
+                                </button>
                             )}
                         </div>
                         <div className="p-4 bg-gray-900 border-t border-gray-800">

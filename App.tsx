@@ -1,5 +1,4 @@
 
-
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon, WifiOff, Trophy } from 'lucide-react';
@@ -140,11 +139,34 @@ const App = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // --- AUTO-JOIN TOURNAMENT LOGIC ---
+    // Check if we have a pending join code from URL params
+    const checkForJoinCode = async () => {
+        const params = new URLSearchParams(window.location.search);
+        // Also check hash params since we use HashRouter
+        const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+        const code = params.get('joinCode') || hashParams.get('joinCode');
+        
+        if (code && user) {
+            // If user is already logged in, try to join immediately
+            console.log("Auto-joining tournament:", code);
+            const res = await CloudService.joinTournament(code.toUpperCase(), user);
+            if(res.success) {
+                // We use a small timeout to let the router mount, then redirect to tournaments
+                setTimeout(() => window.location.hash = '#/tournaments', 500);
+            } else {
+                console.error("Auto-join failed:", res.error);
+            }
+        }
+    };
+    
+    checkForJoinCode();
+
     return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [user]); // Re-run when user changes (e.g. after login)
 
   // Heartbeat / Mutex Check
   useEffect(() => {

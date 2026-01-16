@@ -1,25 +1,75 @@
 
-
-import { useState, useContext, FormEvent } from 'react';
+import { useState, useContext, FormEvent, useEffect } from 'react';
 import { AppContext } from '../App';
-import { Loader2, Cloud } from 'lucide-react';
+import { Loader2, Cloud, ArrowRight, Activity } from 'lucide-react';
+import * as MathUtils from '../services/mathUtils';
 
 const Login = () => {
-  const { login } = useContext(AppContext);
+  const { login, updateHdcp, updateBag } = useContext(AppContext);
+  const [step, setStep] = useState<'username' | 'hdcp'>('username');
   const [name, setName] = useState('');
+  const [hdcpInput, setHdcpInput] = useState(18);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: FormEvent) => {
+  // Check for join code in URL to show specific welcome message
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+
+  useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('joinCode') || new URLSearchParams(window.location.hash.split('?')[1]).get('joinCode');
+      if (code) setJoinCode(code);
+  }, []);
+
+  const handleUsernameSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (name.trim()) {
+    if (!name.trim()) return;
+    
+    setIsLoading(true);
+    
+    // We attempt login. If it's a new user (no bag data returned), the App logic 
+    // will normally just log them in with default bag. 
+    // However, for this requirement, we want to intercept "New Users" to ask for HDCP.
+    // Since `login` in App.tsx abstracts the logic, we will check if we should show HDCP 
+    // based on a heuristic: we assume everyone is "new" to this session if they are typing a name here.
+    // A better approach: Try login. If it returns true, we are in.
+    // BUT, we want to Inject the HDCP flow *before* final dashboard access if possible, 
+    // OR we just ask everyone for their HDCP if they don't have a specific saved session.
+    
+    // STRATEGY: We will proceed to HDCP step immediately for UX "Setup Profile" feel,
+    // unless we detect they are strictly logging in to an existing account.
+    // For simplicity and satisfying "New user... input username then HDCP", we move to step 2.
+    
+    setIsLoading(false);
+    setStep('hdcp');
+  };
+
+  const handleFinalSubmit = async () => {
       setIsLoading(true);
       try {
-        await login(name.trim());
-        // Navigation is handled by App router redirection upon user state change
+          // 1. Set HDCP in context/storage
+          updateHdcp(hdcpInput);
+
+          // 2. Generate Bag based on HDCP
+          const autoBag = MathUtils.generateClubsFromHdcp(hdcpInput);
+          
+          // 3. Perform Login (this will sync the new bag because of the logic below)
+          const success = await login(name.trim());
+          
+          if (success) {
+              // Force update the bag to the HDCP generated one, 
+              // but ONLY if the cloud didn't return a custom bag (handled in App.tsx logic).
+              // Actually, to ensure the "New User" experience works, we explicitly save the auto-bag
+              // which triggers a cloud sync if the user was indeed new.
+              // If the user was existing, App.tsx logic might overwrite this with cloud data, which is GOOD (preserve existing data).
+              // So we effectively propose this bag as the "Local" bag.
+              updateBag(autoBag);
+          }
+      } catch (e) {
+          console.error(e);
+          alert("Login failed. Please try again.");
       } finally {
-        setIsLoading(false);
+          setIsLoading(false);
       }
-    }
   };
 
   return (
@@ -35,43 +85,99 @@ const Login = () => {
         }}
       />
       
-      <div className="bg-black/80 backdrop-blur-md p-8 rounded-2xl w-full max-w-sm mx-4 z-10 border border-gray-800 shadow-2xl">
+      <div className="bg-black/80 backdrop-blur-md p-8 rounded-2xl w-full max-w-sm mx-4 z-10 border border-gray-800 shadow-2xl transition-all duration-500">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-black tracking-[0.2em] text-white mb-2">PINSEEKER</h1>
-          <p className="text-green-400 text-sm font-medium uppercase tracking-widest flex items-center justify-center gap-2">
-            <Cloud size={14} /> Cloud Enabled
-          </p>
+          {joinCode ? (
+              <div className="inline-block bg-blue-900/50 border border-blue-500/30 rounded-lg px-3 py-1 text-blue-300 text-xs font-bold animate-pulse">
+                  Joining Event: {joinCode}
+              </div>
+          ) : (
+              <p className="text-green-400 text-sm font-medium uppercase tracking-widest flex items-center justify-center gap-2">
+                <Cloud size={14} /> Cloud Enabled
+              </p>
+          )}
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-400 mb-2">
-              Identify Yourself
-            </label>
-            <input
-              id="username"
-              type="text"
-              required
-              disabled={isLoading}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors disabled:opacity-50"
-              placeholder="Enter User ID"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
+        {step === 'username' && (
+            <form onSubmit={handleUsernameSubmit} className="space-y-6 animate-in slide-in-from-right duration-300">
+            <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-400 mb-2">
+                Identify Yourself
+                </label>
+                <input
+                id="username"
+                type="text"
+                required
+                autoFocus
+                disabled={isLoading}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors disabled:opacity-50"
+                placeholder="Enter User ID"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                />
+            </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-lg transition-all transform active:scale-95 shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100"
-          >
-            {isLoading ? <Loader2 className="animate-spin" /> : "ENTER CLUBHOUSE"}
-          </button>
-          
-          <p className="text-xs text-center text-gray-500">
-            Logging in on a new device will log out other sessions to prevent data conflicts.
-          </p>
-        </form>
+            <button
+                type="submit"
+                disabled={isLoading || !name.trim()}
+                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-lg transition-all transform active:scale-95 shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100"
+            >
+                {isLoading ? <Loader2 className="animate-spin" /> : <>Next <ArrowRight size={20}/></>}
+            </button>
+            </form>
+        )}
+
+        {step === 'hdcp' && (
+            <div className="space-y-6 animate-in slide-in-from-right duration-300">
+                <div className="text-center">
+                    <h3 className="text-white font-bold text-lg mb-1">Setup Your Profile</h3>
+                    <p className="text-gray-400 text-xs">We'll auto-configure your clubs based on your skill level.</p>
+                </div>
+
+                <div className="bg-gray-900/50 p-6 rounded-xl border border-gray-700 text-center">
+                    <label className="block text-xs font-bold text-green-400 uppercase mb-4 flex items-center justify-center gap-2">
+                        <Activity size={16}/> Your Handicap (HDCP)
+                    </label>
+                    
+                    <div className="flex items-center justify-center gap-4 mb-4">
+                        <button 
+                            onClick={() => setHdcpInput(h => Math.max(0, h - 1))}
+                            className="w-12 h-12 bg-gray-800 rounded-full text-white font-bold hover:bg-gray-700 active:scale-95"
+                        >
+                            -
+                        </button>
+                        <span className="text-5xl font-black text-white w-20">{hdcpInput}</span>
+                        <button 
+                            onClick={() => setHdcpInput(h => Math.min(54, h + 1))}
+                            className="w-12 h-12 bg-gray-800 rounded-full text-white font-bold hover:bg-gray-700 active:scale-95"
+                        >
+                            +
+                        </button>
+                    </div>
+                    
+                    <input 
+                        type="range" 
+                        min="0" max="54" 
+                        value={hdcpInput} 
+                        onChange={(e) => setHdcpInput(Number(e.target.value))}
+                        className="w-full accent-green-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    />
+                </div>
+
+                <button
+                    onClick={handleFinalSubmit}
+                    disabled={isLoading}
+                    className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-lg transition-all transform active:scale-95 shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100"
+                >
+                    {isLoading ? <Loader2 className="animate-spin" /> : "ENTER CLUBHOUSE"}
+                </button>
+                
+                <button onClick={() => setStep('username')} className="w-full text-gray-500 text-xs hover:text-white">
+                    Back to Username
+                </button>
+            </div>
+        )}
       </div>
     </div>
   );
