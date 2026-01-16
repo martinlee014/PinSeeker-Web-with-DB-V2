@@ -44,7 +44,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
     strokeLinejoin="round" 
     className={className}
   >
-    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
+    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
     <path d="M9 6V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
     <path d="M9 4l-2 2" />
     <path d="M15 4l2 2" />
@@ -682,6 +682,18 @@ const PlayRound = () => {
     setShotToDelete(null);
   };
 
+  // NEW: Helper to quickly undo the last shot for current hole
+  const handleUndoLastShot = () => {
+      const currentHoleShots = shots.filter(s => s.holeNumber === hole.number);
+      if (currentHoleShots.length === 0) {
+          alert("No shots recorded for this hole yet.");
+          return;
+      }
+      const lastShot = currentHoleShots[currentHoleShots.length - 1];
+      setShotToDelete(lastShot);
+      setIsMenuOpen(false); // Close menu
+  };
+
   const saveHoleScore = (totalScore: number, putts: number, pens: number) => {
     if (isSaving) return;
     setIsSaving(true);
@@ -1077,6 +1089,12 @@ const PlayRound = () => {
 
              {isMenuOpen && !isReplay && (
                  <div className="flex flex-col gap-3 animate-in slide-in-from-top-4 fade-in duration-200 items-end">
+                     {/* UNDO LAST SHOT BUTTON */}
+                     <button onClick={handleUndoLastShot} className="flex items-center gap-2 bg-gray-800 text-red-300 px-4 py-2.5 rounded-full border border-red-900/50 shadow-xl backdrop-blur-md hover:bg-red-900/20 transition-colors">
+                        <span className="text-xs font-bold mr-1">Undo Last</span>
+                        <RotateCcw size={18} />
+                     </button>
+
                      <button onClick={() => navigate('/settings/clubs', { state: { fromGame: true } })} className="flex items-center gap-2 bg-black/80 text-white px-4 py-2.5 rounded-full border border-white/10 shadow-xl backdrop-blur-md hover:bg-black transition-colors">
                         <span className="text-xs font-bold mr-1">Bag</span>
                         <GolfBagIcon size={18} />
