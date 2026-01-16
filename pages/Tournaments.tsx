@@ -38,6 +38,13 @@ const Tournaments = () => {
     const [showScorerModal, setShowScorerModal] = useState(false);
     const [selectedPlayerToScore, setSelectedPlayerToScore] = useState<string | null>(null);
 
+    // Helper to safely extract display name from potential objects
+    const safeName = (u: any) => {
+        if (!u) return 'Unknown';
+        if (typeof u === 'string') return u;
+        return u.username || u.name || 'User';
+    };
+
     useEffect(() => {
         loadTournaments();
         // Load local courses for creation dropdown
@@ -48,7 +55,7 @@ const Tournaments = () => {
         if (!user || !isOnline) return;
         setIsLoading(true);
         try {
-            const list = await CloudService.getMyTournaments(user);
+            const list = await CloudService.getMyTournaments(safeName(user));
             setMyTournaments(list);
         } catch (e) {
             console.error(e);
@@ -61,7 +68,7 @@ const Tournaments = () => {
         if (!joinCode || !user) return;
         setIsJoining(true);
         try {
-            const res = await CloudService.joinTournament(joinCode.toUpperCase(), user);
+            const res = await CloudService.joinTournament(joinCode.toUpperCase(), safeName(user));
             if (res.success) {
                 alert("Joined successfully!");
                 setJoinCode('');
@@ -79,7 +86,7 @@ const Tournaments = () => {
         if (!newTourName || !selectedCourse || !user) return;
         setIsCreating(true);
         try {
-            const res = await CloudService.createTournament(newTourName, selectedCourse, user);
+            const res = await CloudService.createTournament(newTourName, selectedCourse, safeName(user));
             if (res.success) {
                 alert("Tournament Created! Code: " + res.code);
                 setShowCreateModal(false);
@@ -111,7 +118,7 @@ const Tournaments = () => {
     const initiatePlay = () => {
         if (!activeTournament) return;
         // Open modal to choose who to score for
-        setSelectedPlayerToScore(user); // Default to self
+        setSelectedPlayerToScore(safeName(user)); // Default to self
         setShowScorerModal(true);
     };
 
@@ -128,12 +135,15 @@ const Tournaments = () => {
             return;
         }
 
+        const playerName = safeName(selectedPlayerToScore);
+        const userName = safeName(user);
+
         setShowScorerModal(false);
         navigate('/play', { 
             state: { 
                 course, 
                 tournamentId: activeTournament.id,
-                playerOverride: selectedPlayerToScore === user ? undefined : selectedPlayerToScore
+                playerOverride: playerName === userName ? undefined : playerName
             } 
         });
     };
@@ -198,7 +208,7 @@ const Tournaments = () => {
                                         {idx + 1}
                                     </div>
                                     <div>
-                                        <div className="text-white font-bold text-sm">{entry.username}</div>
+                                        <div className="text-white font-bold text-sm">{safeName(entry.username)}</div>
                                         <div className="text-[10px] text-gray-500">Thru {entry.thru}</div>
                                     </div>
                                 </div>
@@ -229,16 +239,16 @@ const Tournaments = () => {
                         </div>
                         <div className="p-4 bg-gray-900 max-h-[60vh] overflow-y-auto space-y-2">
                             <button
-                                onClick={() => setSelectedPlayerToScore(user)}
-                                className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selectedPlayerToScore === user ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+                                onClick={() => setSelectedPlayerToScore(safeName(user))}
+                                className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selectedPlayerToScore === safeName(user) ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
                             >
-                                <span className="font-bold flex items-center gap-2"><User size={16}/> Me ({user})</span>
-                                {selectedPlayerToScore === user && <CheckCircle2 size={20} className="text-blue-500"/>}
+                                <span className="font-bold flex items-center gap-2"><User size={16}/> Me ({safeName(user)})</span>
+                                {selectedPlayerToScore === safeName(user) && <CheckCircle2 size={20} className="text-blue-500"/>}
                             </button>
                             
                             <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-4 mb-2">Other Participants</div>
                             
-                            {participants.filter(p => p !== user).map(p => (
+                            {participants.map(p => safeName(p)).filter(p => p !== safeName(user)).map(p => (
                                 <button
                                     key={p}
                                     onClick={() => setSelectedPlayerToScore(p)}
@@ -249,7 +259,7 @@ const Tournaments = () => {
                                 </button>
                             ))}
                             
-                            {participants.filter(p => p !== user).length === 0 && (
+                            {participants.length <= 1 && (
                                 <div className="text-center text-gray-600 text-sm py-4 italic">
                                     No other players have joined yet.
                                 </div>
@@ -260,7 +270,7 @@ const Tournaments = () => {
                                 onClick={startRoundForPlayer}
                                 className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl"
                             >
-                                Start Round {selectedPlayerToScore !== user ? `for ${selectedPlayerToScore}` : ''}
+                                Start Round {selectedPlayerToScore !== safeName(user) ? `for ${selectedPlayerToScore}` : ''}
                             </button>
                         </div>
                     </ModalOverlay>

@@ -1,6 +1,4 @@
 
-
-
 import { ClubStats, GolfCourse } from './types';
 
 export const DEFAULT_BAG: ClubStats[] = [
