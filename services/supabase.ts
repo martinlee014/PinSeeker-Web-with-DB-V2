@@ -268,6 +268,22 @@ export const CloudService = {
   // SCORE SYNCING (New)
   // ---------------------------------------------------
 
+  // Helper to fetch a single user's round for conflict checking
+  getRound: async (tournamentId: string, username: string): Promise<RoundHistory | null> => {
+      const supabase = getClient();
+      if (!supabase) return null;
+
+      const { data } = await supabase
+          .from('user_rounds')
+          .select('round_data')
+          .eq('tournament_id', tournamentId)
+          .eq('username', username)
+          .single();
+
+      if (data) return data.round_data;
+      return null;
+  },
+
   submitHoleScore: async (tournamentId: string, username: string, holeScore: HoleScore, courseName: string): Promise<void> => {
       const supabase = getClient();
       if (!supabase) return;
@@ -313,9 +329,6 @@ export const CloudService = {
           round_data: roundData
       };
 
-      // We use unique constraint on (tournament_id, username) in the DB (implied logic, or we rely on ID if we had it)
-      // Since we selected by ID earlier, we can update. If new, insert.
-      
       if (data) {
           await supabase
               .from('user_rounds')

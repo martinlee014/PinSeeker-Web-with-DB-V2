@@ -11,7 +11,7 @@ import { CloudService } from '../services/supabase';
 import * as MathUtils from '../services/mathUtils';
 import { ClubStats, HoleScore, ShotRecord, RoundHistory, LatLng, GolfCourse, MapAnnotation, TeeBox } from '../types';
 import ClubSelector from '../components/ClubSelector';
-import { ScoreModal, ShotConfirmModal, HoleSelectorModal, FullScorecardModal, ModalOverlay } from '../components/Modals';
+import { ScoreModal, ShotConfirmModal, HoleSelectorModal, FullScorecardModal, ModalOverlay, ScoreConflictModal } from '../components/Modals';
 import { Flag, Wind, ChevronLeft, Grid, ListChecks, ArrowLeft, ArrowRight, ChevronDown, MapPin, Ruler, Trash2, PenTool, Type, Highlighter, X, Check, Eraser, Home, Signal, SignalHigh, SignalLow, SignalMedium, Footprints, PlayCircle, RotateCcw, Rocket, Satellite, Menu, MoreVertical, LayoutGrid, Loader2, UserCircle } from 'lucide-react';
 // ... (rest of imports)
 import { 
@@ -44,7 +44,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
     strokeLinejoin="round" 
     className={className}
   >
-    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
+    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
     <path d="M9 6V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
     <path d="M9 4l-2 2" />
     <path d="M15 4l2 2" />
@@ -359,6 +359,7 @@ const PlayRound = () => {
   const [showHoleSelect, setShowHoleSelect] = useState(false);
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [showFullCard, setShowFullCard] = useState(false);
+  const [groupScorecards, setGroupScorecards] = useState<RoundHistory[]>([]);
   const [pendingShot, setPendingShot] = useState<{ pos: LatLng, isGPS: boolean, dist: number } | null>(null);
   const [windSpeed, setWindSpeed] = useState(5);
   const [windDir, setWindDir] = useState(180);
@@ -376,6 +377,11 @@ const PlayRound = () => {
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [gpsSignalLevel, setGpsSignalLevel] = useState<0 | 1 | 2 | 3>(0);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Conflict State
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [scoreConflicts, setScoreConflicts] = useState<any[]>([]);
+  const [pendingScoresToSave, setPendingScoresToSave] = useState<Record<string, any> | null>(null);
 
   const watchIdRef = useRef<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -695,9 +701,47 @@ const PlayRound = () => {
       setIsMenuOpen(false); // Close menu
   };
 
-  const saveHoleScore = async (scores: Record<string, {totalScore: number, putts: number, pens: number}>) => {
+  const saveHoleScore = async (scores: Record<string, {totalScore: number, putts: number, pens: number}>, ignoreConflicts = false) => {
     if (isSaving) return;
     setIsSaving(true);
+    
+    // Conflict Detection Logic
+    if (tournamentId && isOnline && !ignoreConflicts) {
+        const conflicts = [];
+        const playersToCheck = Object.keys(scores);
+        
+        for (const player of playersToCheck) {
+            try {
+                const cloudRound = await CloudService.getRound(tournamentId, player);
+                if (cloudRound) {
+                    const existingScore = cloudRound.scorecard.find(s => s.holeNumber === hole.number);
+                    const newTotal = scores[player].totalScore;
+                    
+                    if (existingScore) {
+                         const existingTotal = existingScore.shotsTaken + existingScore.putts + existingScore.penalties;
+                         if (existingTotal !== newTotal) {
+                             conflicts.push({
+                                 player: player,
+                                 cloudScore: existingTotal,
+                                 localScore: newTotal
+                             });
+                         }
+                    }
+                }
+            } catch (e) {
+                console.warn("Error checking conflicts for", player, e);
+            }
+        }
+        
+        if (conflicts.length > 0) {
+            setScoreConflicts(conflicts);
+            setPendingScoresToSave(scores);
+            setShowScoreModal(false);
+            setShowConflictModal(true);
+            setIsSaving(false);
+            return; // Stop saving to wait for user resolution
+        }
+    }
 
     try {
         // 1. Process Main Player (Current View)
@@ -732,6 +776,9 @@ const PlayRound = () => {
         }
 
         setShowScoreModal(false);
+        setShowConflictModal(false);
+        setPendingScoresToSave(null);
+        setScoreConflicts([]);
         
         if (currentHoleIdx < activeCourse.holes.length - 1) {
             loadHole(currentHoleIdx + 1);
@@ -757,6 +804,39 @@ const PlayRound = () => {
     } finally {
         setIsSaving(false);
     }
+  };
+
+  const handleResolveConflicts = (decisions: Record<string, 'local' | 'cloud'>) => {
+      if (!pendingScoresToSave) return;
+      
+      const resolvedScores = { ...pendingScoresToSave };
+      
+      scoreConflicts.forEach(c => {
+          if (decisions[c.player] === 'cloud') {
+              // Fetch exact hole data from cloud or infer (Since we only stored total in conflict, we might need re-fetch or approximation)
+              // For simplicity in this logic, we keep the LOCAL score logic but we assume the user corrected it in UI or we simply don't overwrite.
+              // Actually, better: if user chose Cloud, we remove that player from the save list effectively, OR update local with cloud val.
+              // Let's rely on re-fetching logic? No, too complex.
+              // Simplest approach: if 'cloud' chosen, we just DON'T send the update for that player.
+              delete resolvedScores[c.player];
+          }
+      });
+      
+      // Proceed to save remaining scores ignoring conflicts
+      saveHoleScore(resolvedScores, true);
+  };
+
+  const openFullScorecard = async () => {
+      setShowFullCard(true);
+      if (tournamentId && isOnline && trackedPlayers.length > 0) {
+          try {
+              const promises = trackedPlayers.map(p => CloudService.getRound(tournamentId, p));
+              const rounds = await Promise.all(promises);
+              setGroupScorecards(rounds.filter(r => r !== null) as RoundHistory[]);
+          } catch (e) {
+              console.error("Failed to load group scores", e);
+          }
+      }
   };
 
   const loadHole = (idx: number) => {
@@ -862,7 +942,7 @@ const PlayRound = () => {
       {/* SCORER BANNER */}
       {isScorerMode && !isReplay && (
           <div className="absolute top-0 left-0 right-0 z-[1100] bg-orange-600 text-white text-[10px] font-bold py-1 text-center uppercase tracking-widest flex items-center justify-center gap-1 shadow-lg">
-              <UserCircle size={10} /> Scoring for: {scorerDisplayName}
+              <UserCircle size={10} /> Scoring for: {scorerDisplayName} {trackedPlayers.length > 1 && `+ ${trackedPlayers.length - 1} Others`}
           </div>
       )}
 
@@ -1144,7 +1224,7 @@ const PlayRound = () => {
                         <span className="text-xs font-bold mr-1">Grid</span>
                         <LayoutGrid size={18} />
                      </button>
-                     <button onClick={() => setShowFullCard(true)} className="flex items-center gap-2 bg-black/80 text-white px-4 py-2.5 rounded-full border border-white/10 shadow-xl backdrop-blur-md hover:bg-black transition-colors">
+                     <button onClick={openFullScorecard} className="flex items-center gap-2 bg-black/80 text-white px-4 py-2.5 rounded-full border border-white/10 shadow-xl backdrop-blur-md hover:bg-black transition-colors">
                         <span className="text-xs font-bold mr-1">Card</span>
                         <ListChecks size={18} />
                      </button>
@@ -1304,8 +1384,42 @@ const PlayRound = () => {
       )}
 
       {showHoleSelect && <HoleSelectorModal holes={activeCourse.holes} currentIdx={currentHoleIdx} onSelect={loadHole} onClose={() => setShowHoleSelect(false)} />}
-      {showScoreModal && <ScoreModal par={activePar} holeNum={hole.number} recordedShots={Math.max(0, shotNum - 1)} currentPlayer={scorerDisplayName} players={trackedPlayers} onSave={saveHoleScore} onClose={() => setShowScoreModal(false)} />}
-      {showFullCard && <FullScorecardModal holes={activeCourse.holes} scorecard={scorecard} onFinishRound={() => finishRound()} onClose={() => setShowFullCard(false)} />}
+      
+      {showScoreModal && (
+          <ScoreModal 
+            par={activePar} 
+            holeNum={hole.number} 
+            recordedShots={Math.max(0, shotNum - 1)} 
+            currentPlayer={scorerDisplayName} 
+            players={trackedPlayers} 
+            onSave={(scores) => saveHoleScore(scores)} 
+            onClose={() => setShowScoreModal(false)} 
+          />
+      )}
+      
+      {showConflictModal && pendingScoresToSave && (
+          <ScoreConflictModal 
+             conflicts={scoreConflicts}
+             onResolve={handleResolveConflicts}
+             onCancel={() => { 
+                 setShowConflictModal(false); 
+                 setIsSaving(false); 
+                 setPendingScoresToSave(null); 
+                 setShowScoreModal(true); // Re-open score modal
+             }}
+          />
+      )}
+
+      {showFullCard && (
+          <FullScorecardModal 
+            holes={activeCourse.holes} 
+            groupScorecards={groupScorecards}
+            scorecard={scorecard} 
+            onFinishRound={() => finishRound()} 
+            onClose={() => setShowFullCard(false)} 
+          />
+      )}
+      
       {pendingShot && <ShotConfirmModal dist={MathUtils.formatDistance(pendingShot.dist, useYards)} club={selectedClub} clubs={bag} isGPS={pendingShot.isGPS} isLongDistWarning={pendingShot.dist > 500} onChangeClub={setSelectedClub} onConfirm={confirmShot} onCancel={() => setPendingShot(null)} />}
       
       {shotToDelete && (

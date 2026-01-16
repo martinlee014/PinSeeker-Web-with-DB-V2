@@ -1,7 +1,8 @@
 
+
 import { useState, ReactNode, ChangeEvent, useEffect } from 'react';
-import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw, Users } from 'lucide-react';
-import { ClubStats, GolfHole, HoleScore } from '../types';
+import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw, Users, AlertCircle } from 'lucide-react';
+import { ClubStats, GolfHole, HoleScore, RoundHistory } from '../types';
 
 export const ModalOverlay = ({ children, onClose }: { children?: ReactNode, onClose?: () => void }) => (
   <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
@@ -159,19 +160,130 @@ export const ConfirmClubSyncModal = ({
     );
 };
 
-// --- MULTI-PLAYER SCORE MODAL ---
+export const ScoreConflictModal = ({
+    conflicts,
+    onResolve,
+    onCancel
+}: {
+    conflicts: { player: string, cloudScore: number, localScore: number }[],
+    onResolve: (resolutions: Record<string, 'local' | 'cloud'>) => void,
+    onCancel: () => void
+}) => {
+    const [decisions, setDecisions] = useState<Record<string, 'local' | 'cloud'>>({});
+
+    useEffect(() => {
+        const initial: Record<string, 'local' | 'cloud'> = {};
+        conflicts.forEach(c => initial[c.player] = 'cloud'); // Default to Cloud trust
+        setDecisions(initial);
+    }, [conflicts]);
+
+    const handleToggle = (player: string) => {
+        setDecisions(prev => ({
+            ...prev,
+            [player]: prev[player] === 'local' ? 'cloud' : 'local'
+        }));
+    };
+
+    return (
+        <ModalOverlay onClose={onCancel}>
+             <div className="p-4 border-b border-gray-800 bg-red-900/20 shrink-0">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <AlertTriangle size={20} className="text-red-500" /> Score Conflict
+                </h3>
+            </div>
+            <div className="p-4">
+                <p className="text-sm text-gray-300 mb-4">
+                    Some scores you entered differ from what is already saved in the cloud (possibly entered by the player themselves).
+                </p>
+                <div className="space-y-3 mb-4">
+                    {conflicts.map(c => (
+                        <div key={c.player} className="bg-gray-800 p-3 rounded-xl border border-gray-700">
+                            <div className="text-white font-bold mb-2">{c.player.replace('Guest: ', '')}</div>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => setDecisions({...decisions, [c.player]: 'cloud'})}
+                                    className={`flex-1 p-2 rounded-lg text-xs font-bold border transition-all ${decisions[c.player] === 'cloud' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-500'}`}
+                                >
+                                    Cloud: {c.cloudScore}
+                                </button>
+                                <button 
+                                    onClick={() => setDecisions({...decisions, [c.player]: 'local'})}
+                                    className={`flex-1 p-2 rounded-lg text-xs font-bold border transition-all ${decisions[c.player] === 'local' ? 'bg-orange-600 border-orange-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-500'}`}
+                                >
+                                    Yours: {c.localScore}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <button 
+                    onClick={() => onResolve(decisions)}
+                    className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl"
+                >
+                    Resolve & Save
+                </button>
+            </div>
+        </ModalOverlay>
+    );
+};
+
+// --- MULTI-PLAYER SCORE MODAL (REDESIGNED) ---
 interface PlayerScoreState {
     totalScore: number;
     putts: number;
     pens: number;
 }
 
+const PlayerRow = ({ 
+    player, 
+    data, 
+    isCurrentPlayer, 
+    par, 
+    onUpdate 
+}: { 
+    player: string, 
+    data: PlayerScoreState, 
+    isCurrentPlayer: boolean, 
+    par: number, 
+    onUpdate: (field: keyof PlayerScoreState, delta: number) => void 
+}) => (
+      <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 mb-3 animate-in slide-in-from-right-4">
+          <div className="flex justify-between items-center mb-2">
+              <span className="font-bold text-white text-sm truncate max-w-[120px]">
+                  {isCurrentPlayer ? 'You' : player.replace('Guest: ', '')}
+              </span>
+              <div className="flex gap-4 items-center">
+                  <div className="flex items-center gap-2">
+                      <button onClick={() => onUpdate('totalScore', -1)} className="w-8 h-8 rounded bg-gray-700 text-white flex items-center justify-center hover:bg-gray-600 active:scale-95"><Minus size={16}/></button>
+                      <span className={`text-xl font-black w-8 text-center ${data.totalScore < par ? 'text-red-400' : data.totalScore > par ? 'text-blue-400' : 'text-white'}`}>{data.totalScore}</span>
+                      <button onClick={() => onUpdate('totalScore', 1)} className="w-8 h-8 rounded bg-gray-700 text-white flex items-center justify-center hover:bg-gray-600 active:scale-95"><Plus size={16}/></button>
+                  </div>
+              </div>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-gray-400 justify-end bg-gray-900/50 p-1.5 rounded-lg">
+              <div className="flex items-center gap-2">
+                  <span>Putts</span>
+                  <button onClick={() => onUpdate('putts', -1)} className="w-6 h-6 rounded bg-gray-700 text-white flex items-center justify-center"><Minus size={12}/></button>
+                  <span className="font-bold text-white w-4 text-center">{data.putts}</span>
+                  <button onClick={() => onUpdate('putts', 1)} className="w-6 h-6 rounded bg-gray-700 text-white flex items-center justify-center"><Plus size={12}/></button>
+              </div>
+              <div className="w-[1px] h-4 bg-gray-700"></div>
+              <div className="flex items-center gap-2">
+                  <span>Pen</span>
+                  <button onClick={() => onUpdate('pens', -1)} className="w-6 h-6 rounded bg-gray-700 text-white flex items-center justify-center"><Minus size={12}/></button>
+                  <span className="font-bold text-white w-4 text-center">{data.pens}</span>
+                  <button onClick={() => onUpdate('pens', 1)} className="w-6 h-6 rounded bg-gray-700 text-white flex items-center justify-center"><Plus size={12}/></button>
+              </div>
+          </div>
+      </div>
+);
+
 export const ScoreModal = ({ 
   par, 
   holeNum, 
   recordedShots,
   currentPlayer,
-  players = [], // List of all player names to score for
+  players = [], 
   onSave, 
   onClose 
 }: { 
@@ -183,20 +295,13 @@ export const ScoreModal = ({
   onSave: (scores: Record<string, PlayerScoreState>) => void, 
   onClose: () => void 
 }) => {
-  // State maps player name to their score object
   const [allScores, setAllScores] = useState<Record<string, PlayerScoreState>>({});
-  const [activeTab, setActiveTab] = useState(currentPlayer);
 
-  // Initialize defaults
   useEffect(() => {
       const initial: Record<string, PlayerScoreState> = {};
-      
-      // Ensure we have a list including current player
       const list = players.length > 0 ? players : [currentPlayer];
       
       list.forEach(p => {
-          // For the main player (who is tracking shots), default to recordedShots + 2 putts
-          // For others, default to Par (or Par+1/2 based on typical)
           const isMain = p === currentPlayer;
           initial[p] = {
               putts: 2,
@@ -205,7 +310,6 @@ export const ScoreModal = ({
           };
       });
       setAllScores(initial);
-      setActiveTab(currentPlayer);
   }, [players, currentPlayer, par, recordedShots]);
 
   const updateScore = (player: string, field: keyof PlayerScoreState, delta: number) => {
@@ -213,15 +317,10 @@ export const ScoreModal = ({
           const pScore = { ...prev[player] };
           
           if (field === 'totalScore') {
-              // Ensure total score doesn't drop below putts + pens + 1
               const minScore = pScore.putts + pScore.pens + 1;
               pScore.totalScore = Math.max(minScore, pScore.totalScore + delta);
           } else if (field === 'putts') {
               pScore.putts = Math.max(0, pScore.putts + delta);
-              // Update total if putts change
-              const diff = delta > 0 ? 1 : -1; // Approximation
-              // Ideally re-calc total based on changed component, but "Total" is the primary input in golf
-              // Usually we want total to move with putts
               pScore.totalScore = Math.max(1, pScore.totalScore + (pScore.putts - (prev[player].putts))); 
           } else if (field === 'pens') {
               pScore.pens = Math.max(0, pScore.pens + delta);
@@ -231,81 +330,33 @@ export const ScoreModal = ({
       });
   };
 
-  const currentData = allScores[activeTab] || { totalScore: par, putts: 2, pens: 0 };
-
-  const Stepper = ({ label, val, onChange, color = "bg-gray-700" }: any) => (
-    <div className="flex items-center justify-between bg-gray-800 p-3 rounded-xl mb-3 border border-gray-700">
-      <span className="text-gray-300 font-bold">{label}</span>
-      <div className="flex items-center gap-4">
-        <button type="button" onClick={() => onChange(-1)} className={`w-10 h-10 rounded-xl ${color} text-white font-bold flex items-center justify-center hover:brightness-110 active:scale-95 transition-all`}>
-            <Minus size={18} />
-        </button>
-        <span className="w-8 text-center text-xl font-bold text-white">{val}</span>
-        <button type="button" onClick={() => onChange(1)} className={`w-10 h-10 rounded-xl ${color} text-white font-bold flex items-center justify-center hover:brightness-110 active:scale-95 transition-all`}>
-            <Plus size={18} />
-        </button>
-      </div>
-    </div>
-  );
-
   return (
     <ModalOverlay onClose={onClose}>
-      <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50 shrink-0">
-        <h3 className="text-lg font-bold text-white">Hole {holeNum} Result</h3>
+      <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900 shrink-0">
+        <h3 className="text-lg font-bold text-white">Hole {holeNum} <span className="text-gray-500 text-sm ml-2">Par {par}</span></h3>
         <button type="button" onClick={onClose}><X className="text-gray-400" /></button>
       </div>
+
+      <div className="p-4 overflow-y-auto bg-gray-900 flex-1">
+          {Object.keys(allScores).map(p => (
+              <PlayerRow 
+                  key={p} 
+                  player={p} 
+                  data={allScores[p]} 
+                  isCurrentPlayer={p === currentPlayer}
+                  par={par}
+                  onUpdate={(field, delta) => updateScore(p, field, delta)}
+              />
+          ))}
+      </div>
       
-      {/* Player Tabs */}
-      {Object.keys(allScores).length > 1 && (
-          <div className="bg-gray-900 p-2 flex gap-2 overflow-x-auto border-b border-gray-800">
-              {Object.keys(allScores).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setActiveTab(p)}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${activeTab === p ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}
-                  >
-                      {p === currentPlayer ? 'Me' : p.replace('Guest: ', '')}
-                      <span className="ml-1 opacity-70">({allScores[p].totalScore})</span>
-                  </button>
-              ))}
-          </div>
-      )}
-
-      <div className="p-6 overflow-y-auto">
-        <div className="text-center mb-8 bg-gray-800/50 p-4 rounded-2xl border border-gray-700 relative">
-            <div className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-2">Total Score ({activeTab === currentPlayer ? 'You' : activeTab.replace('Guest: ', '')})</div>
-            <div className="flex items-center justify-center gap-6">
-                <button onClick={() => updateScore(activeTab, 'totalScore', -1)} className="w-12 h-12 rounded-full bg-gray-700 text-white flex items-center justify-center hover:bg-gray-600 active:scale-95 transition-all">
-                    <Minus size={24}/>
-                </button>
-                <span className={`text-6xl font-black ${currentData.totalScore < par ? 'text-red-500' : currentData.totalScore > par ? 'text-blue-500' : 'text-white'}`}>
-                    {currentData.totalScore}
-                </span>
-                <button onClick={() => updateScore(activeTab, 'totalScore', 1)} className="w-12 h-12 rounded-full bg-green-600 text-white flex items-center justify-center hover:bg-green-500 active:scale-95 transition-all shadow-lg shadow-green-900/50">
-                    <Plus size={24}/>
-                </button>
-            </div>
-            <div className="mt-2 text-sm text-gray-400">Par {par}</div>
-        </div>
-        <div className="space-y-1">
-            <Stepper label="Putts" val={currentData.putts} onChange={(d: number) => updateScore(activeTab, 'putts', d)} />
-            <Stepper label="Penalties" val={currentData.pens} onChange={(d: number) => updateScore(activeTab, 'pens', d)} color="bg-red-900/40" />
-        </div>
-        
-        {activeTab === currentPlayer && (
-            <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-500/20 mb-4 mt-4 text-center">
-                <p className="text-xs text-blue-300">
-                    Calculated Shots to Green: <span className="font-bold text-white text-sm">{Math.max(0, currentData.totalScore - currentData.putts - currentData.pens)}</span>
-                </p>
-            </div>
-        )}
-
+      <div className="p-4 border-t border-gray-800 bg-gray-900 shrink-0">
         <button 
-          type="button"
-          onClick={() => onSave(allScores)}
-          className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95 mt-4"
-        >
-          <Check size={20} /> Save All Scores
+            type="button"
+            onClick={() => onSave(allScores)}
+            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95"
+            >
+            <Check size={20} /> Save All Scores
         </button>
       </div>
     </ModalOverlay>
@@ -406,70 +457,76 @@ export const HoleSelectorModal = ({ holes, currentIdx, onSelect, onClose }: { ho
 
 export const FullScorecardModal = ({ 
   holes, 
-  scorecard, 
+  groupScorecards = [], // Array of RoundHistory to show side-by-side
+  scorecard, // Fallback single
   onFinishRound, 
   onClose 
 }: { 
   holes: GolfHole[], 
-  scorecard: HoleScore[], 
+  groupScorecards?: RoundHistory[],
+  scorecard?: HoleScore[], 
   onFinishRound: () => void, 
   onClose: () => void 
 }) => {
-  const getTotal = (metric: 'par' | 'score' | 'putts') => {
-    if (metric === 'par') return holes.reduce((a, b) => a + b.par, 0);
-    return scorecard.reduce((acc, h) => {
-      if (metric === 'score') return acc + h.shotsTaken + h.putts + h.penalties;
-      if (metric === 'putts') return acc + h.putts;
-      return acc;
-    }, 0);
+  const cards = groupScorecards.length > 0 ? groupScorecards : (scorecard ? [{ scorecard, player: 'Me' } as RoundHistory] : []);
+
+  const getScore = (card: RoundHistory, holeNum: number) => {
+      const s = card.scorecard.find(h => h.holeNumber === holeNum);
+      return s ? s.shotsTaken + s.putts + s.penalties : null;
   };
+
+  const getTotals = (card: RoundHistory) => {
+      return card.scorecard.reduce((acc, h) => acc + h.shotsTaken + h.putts + h.penalties, 0);
+  };
+
   return (
     <ModalOverlay onClose={onClose}>
       <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900 shrink-0">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Trophy size={18} className="text-yellow-500"/> Scorecard
+          <Trophy size={18} className="text-yellow-500"/> Group Scorecard
         </h3>
         <button type="button" onClick={onClose}><X className="text-gray-400" /></button>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
-        <table className="w-full text-sm text-left text-gray-400">
-          <thead className="text-xs text-gray-500 uppercase bg-gray-800">
-            <tr>
-              <th className="px-3 py-2 rounded-l-lg">Hole</th>
-              <th className="px-3 py-2">Par</th>
-              <th className="px-3 py-2 font-bold text-white">Score</th>
-              <th className="px-3 py-2 rounded-r-lg">Putts</th>
-            </tr>
-          </thead>
-          <tbody>
-            {holes.map((hole) => {
-              const record = scorecard.find(s => s.holeNumber === hole.number);
-              const scoreVal = record ? record.shotsTaken + record.putts + record.penalties : null;
-              const scoreDisplay = scoreVal !== null ? scoreVal : '-';
-              const puttsDisplay = record ? record.putts : '-';
-              let scoreClass = '';
-              if (scoreVal !== null) {
-                if (scoreVal < hole.par) scoreClass = 'text-red-400 font-bold';
-                else if (scoreVal > hole.par) scoreClass = 'text-blue-400';
-                else scoreClass = 'text-white';
-              }
-              return (
-                <tr key={hole.number} className="border-b border-gray-800 hover:bg-gray-800/50">
-                  <td className="px-3 py-3 font-medium text-white">{hole.number}</td>
-                  <td className="px-3 py-3">{hole.par}</td>
-                  <td className={`px-3 py-3 ${scoreClass}`}>{scoreDisplay}</td>
-                  <td className="px-3 py-3">{puttsDisplay}</td>
-                </tr>
-              );
-            })}
-            <tr className="bg-gray-800 font-bold text-white">
-              <td className="px-3 py-3 rounded-l-lg">TOT</td>
-              <td className="px-3 py-3">{getTotal('par')}</td>
-              <td className="px-3 py-3 text-yellow-400">{getTotal('score')}</td>
-              <td className="px-3 py-3 rounded-r-lg">{getTotal('putts')}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="flex-1 overflow-auto p-0 bg-gray-900">
+        <div className="min-w-max">
+            <div className="grid bg-gray-800 border-b border-gray-700 sticky top-0 z-10" style={{ gridTemplateColumns: `50px repeat(${cards.length}, minmax(80px, 1fr))` }}>
+                <div className="p-3 text-xs font-bold text-gray-500 uppercase">Hole</div>
+                {cards.map((c, i) => (
+                    <div key={i} className="p-3 text-xs font-bold text-white text-center truncate border-l border-gray-700">
+                        {c.player?.replace('Guest: ', '') || 'Player'}
+                    </div>
+                ))}
+            </div>
+            
+            {holes.map(h => (
+                <div key={h.number} className="grid border-b border-gray-800/50 hover:bg-gray-800/30" style={{ gridTemplateColumns: `50px repeat(${cards.length}, minmax(80px, 1fr))` }}>
+                    <div className="p-3 text-sm font-bold text-gray-400 text-center bg-gray-900/50 sticky left-0">{h.number}</div>
+                    {cards.map((c, i) => {
+                        const score = getScore(c, h.number);
+                        let color = 'text-gray-500';
+                        if (score) {
+                            if (score < h.par) color = 'text-red-400 font-bold';
+                            else if (score > h.par) color = 'text-blue-400';
+                            else color = 'text-white';
+                        }
+                        return (
+                            <div key={i} className={`p-3 text-sm text-center border-l border-gray-800 ${color}`}>
+                                {score || '-'}
+                            </div>
+                        );
+                    })}
+                </div>
+            ))}
+
+            <div className="grid bg-gray-800 font-bold sticky bottom-0 z-10 border-t border-gray-700" style={{ gridTemplateColumns: `50px repeat(${cards.length}, minmax(80px, 1fr))` }}>
+                <div className="p-3 text-xs text-gray-400 uppercase">TOT</div>
+                {cards.map((c, i) => (
+                    <div key={i} className="p-3 text-white text-center border-l border-gray-700">
+                        {getTotals(c)}
+                    </div>
+                ))}
+            </div>
+        </div>
       </div>
       <div className="p-4 border-t border-gray-800 shrink-0 bg-gray-900">
         <button type="button" onClick={onFinishRound} className="w-full bg-red-900/80 hover:bg-red-800 text-red-100 border border-red-700 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
