@@ -238,7 +238,13 @@ const App = () => {
                 StorageService.overwriteHistory(username, res.history);
             }
 
-            // 3. Handle Bag Data with Conflict Resolution
+            // 3. Handle Preferences (Unit System)
+            if (res.preferences && typeof res.preferences.useYards !== 'undefined') {
+                setUseYards(res.preferences.useYards);
+                StorageService.setUseYards(res.preferences.useYards);
+            }
+
+            // 4. Handle Bag Data with Conflict Resolution
             if (res.bag && res.bag.length > 0) {
                 const localBag = StorageService.getBag();
                 const isLocalDefault = JSON.stringify(localBag) === JSON.stringify(DEFAULT_BAG);
@@ -284,6 +290,11 @@ const App = () => {
     const newVal = !useYards;
     setUseYards(newVal);
     StorageService.setUseYards(newVal);
+    
+    // Sync preference to cloud if logged in
+    if (user && isOnline) {
+        CloudService.syncPreferences(user, { useYards: newVal });
+    }
   };
 
   const updateHdcp = (val: number) => {

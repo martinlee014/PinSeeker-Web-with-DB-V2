@@ -1,3 +1,4 @@
+
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 import { ClubStats } from '../types';
@@ -163,7 +164,7 @@ const ClubManagement = () => {
   if (activeIndex !== null) {
     const isNew = activeIndex === -1;
     return (
-        <div className="flex flex-col h-full bg-gray-900 relative">
+        <div className="flex flex-col h-full bg-gray-900 relative pt-[calc(env(safe-area-inset-top))]">
             <div className="flex items-center justify-between p-4 pb-2 shrink-0">
                 <button onClick={() => setActiveIndex(null)} className="p-2 bg-gray-800 rounded-lg">
                     <ChevronLeft className="text-white" />
@@ -257,7 +258,7 @@ const ClubManagement = () => {
 
   // --- LIST VIEW ---
   return (
-    <div className="p-4 flex flex-col h-full bg-gray-900 relative">
+    <div className="flex flex-col h-full bg-gray-900 relative pt-[calc(1rem+env(safe-area-inset-top))] px-4 pb-4">
       <div className="flex items-center justify-between mb-6 shrink-0">
         <button onClick={handleBack} className="p-2 bg-gray-800 rounded-lg">
           <ChevronLeft className="text-white" />

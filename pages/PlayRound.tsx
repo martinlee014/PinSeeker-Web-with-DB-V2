@@ -1,8 +1,7 @@
-
-// ... (imports remain the same)
+// ... (keep all existing imports and code unchanged up to openFullScorecard)
 import React, { useState, useEffect, useContext, useMemo, useRef, Fragment } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Polyline, Polygon, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { AppContext } from '../App';
 import { DUVENHOF_COURSE } from '../constants';
@@ -13,7 +12,6 @@ import { ClubStats, HoleScore, ShotRecord, RoundHistory, LatLng, GolfCourse, Map
 import ClubSelector from '../components/ClubSelector';
 import { ScoreModal, ShotConfirmModal, HoleSelectorModal, FullScorecardModal, ModalOverlay, ScoreConflictModal } from '../components/Modals';
 import { Flag, Wind, ChevronLeft, Grid, ListChecks, ArrowLeft, ArrowRight, ChevronDown, MapPin, Ruler, Trash2, PenTool, Type, Highlighter, X, Check, Eraser, Home, Signal, SignalHigh, SignalLow, SignalMedium, Footprints, PlayCircle, RotateCcw, Rocket, Satellite, Menu, MoreVertical, LayoutGrid, Loader2, UserCircle } from 'lucide-react';
-// ... (rest of imports)
 import { 
   flagIcon, 
   userFlagIcon, 
@@ -29,7 +27,7 @@ import {
   createAnnotationTextIcon 
 } from '../utils/mapIcons';
 
-// ... (Icon components like GolfBagIcon, RotatedMapHandler, MapInitializer remain same)
+// ... (keep icon components and helpers)
 
 const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
   <svg 
@@ -44,7 +42,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
     strokeLinejoin="round" 
     className={className}
   >
-    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
+    <path d="M7 6h10v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V6z" />
     <path d="M9 6V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
     <path d="M9 4l-2 2" />
     <path d="M15 4l2 2" />
@@ -54,6 +52,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
   </svg>
 );
 
+// ... (keep RotatedMapHandler and MapInitializer)
 const RotatedMapHandler = ({ 
     rotation, 
     onLongPress,
@@ -269,7 +268,13 @@ const PlayRound = () => {
   // Scorer Mode check
   const isScorerMode = !!location.state?.playerOverride;
   const activePlayerName = location.state?.playerOverride || user || 'Guest';
-  const trackedPlayers: string[] = location.state?.group || [activePlayerName];
+  
+  // Filter duplicates from group list immediately to prevent key errors
+  // Memoized to prevent array reference instability causing ScoreModal resets
+  const trackedPlayers = useMemo(() => {
+      const rawGroup = location.state?.group || [activePlayerName];
+      return Array.from(new Set(rawGroup)) as string[];
+  }, [location.state, activePlayerName]);
   
   // Safe Name Extraction helper
   const getDisplayName = (val: any) => {
@@ -309,13 +314,31 @@ const PlayRound = () => {
       return DUVENHOF_COURSE;
   });
 
-  const [currentHoleIdx, setCurrentHoleIdx] = useState(initialHoleIdx);
-  const [shots, setShots] = useState<ShotRecord[]>([]);
-  const [scorecard, setScorecard] = useState<HoleScore[]>([]);
+  // AUTO-RESUME LOGIC
+  // Attempt to read saved state immediately during initialization
+  // This ensures that if a user crashes/refreshes/re-enters, they go back to the exact hole.
+  // We prioritize "Tournament Match" first, then generic "Course Match".
+  const savedState = useMemo(() => {
+      if (isReplay || !user) return null;
+      const s = StorageService.getTempState(user);
+      if (s) {
+          // If in Tournament mode, only resume if ID matches
+          if (tournamentId && s.tournamentId === tournamentId) return s;
+          // If not in Tournament mode, resume if Course matches and state wasn't for a tournament
+          if (!tournamentId && !s.tournamentId && s.courseId === activeCourse.id) return s;
+      }
+      return null;
+  }, [user, tournamentId, activeCourse.id, isReplay]);
+
+  // Use saved state for initialization if available
+  const [currentHoleIdx, setCurrentHoleIdx] = useState(savedState ? savedState.currentHoleIndex : initialHoleIdx);
+  const [shots, setShots] = useState<ShotRecord[]>(savedState ? savedState.shots : []);
+  const [scorecard, setScorecard] = useState<HoleScore[]>(savedState ? savedState.scorecard : []);
+  const [shotNum, setShotNum] = useState(savedState ? savedState.currentShotNum : 1);
   
   // TEE SELECTION STATE
   const [selectedTee, setSelectedTee] = useState<TeeBox | null>(null);
-  const [showTeeSelect, setShowTeeSelect] = useState(!isReplay); // Show default if not replay
+  const [showTeeSelect, setShowTeeSelect] = useState(!isReplay && !savedState); // Don't show tee select if resuming
 
   const hole = activeCourse.holes[currentHoleIdx];
 
@@ -340,22 +363,16 @@ const PlayRound = () => {
   }, [selectedTee, hole]);
 
   const [currentBallPos, setCurrentBallPos] = useState<LatLng>(() => {
-      // 1. Try restore from temp state
-      if (!isReplay && user) {
-          const searchParams = new URLSearchParams(location.search);
-          if (searchParams.get('restore') === 'true') {
-              const saved = StorageService.getTempState(user);
-              if (saved) {
-                   if (saved.currentBallPos) return saved.currentBallPos;
-              }
-          }
+      // Restore ball pos if available
+      if (savedState && savedState.currentBallPos) {
+          return savedState.currentBallPos;
       }
-      return { lat: 0, lng: 0 }; // Temporary, updated via effect once activeTee resolves
+      return { lat: 0, lng: 0 }; 
   });
 
   const [selectedClub, setSelectedClub] = useState<ClubStats>(bag[0] || { name: 'Driver', carry: 230, sideError: 45, depthError: 25 });
   const [aimAngle, setAimAngle] = useState(0);
-  const [shotNum, setShotNum] = useState(1);
+  
   const [showHoleSelect, setShowHoleSelect] = useState(false);
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [showFullCard, setShowFullCard] = useState(false);
@@ -391,6 +408,97 @@ const PlayRound = () => {
   const [teeButtonText, setTeeButtonText] = useState("TEE OFF");
   const [isTeePressing, setIsTeePressing] = useState(false);
 
+  // UPDATED: Handle Full Scorecard Loading
+  const openFullScorecard = async () => {
+      setShowFullCard(true);
+      
+      // 1. Initialize placeholders for all tracked players (Deduplicated)
+      // Use the scorerDisplayName's current state for "Me" if applicable
+      const players = Array.from(new Set(trackedPlayers));
+      
+      const placeholders: RoundHistory[] = players.map(p => {
+          if (p === scorerDisplayName) {
+              return {
+                  id: 'local',
+                  date: new Date().toLocaleString(),
+                  courseName: activeCourse.name,
+                  scorecard: scorecard,
+                  shots: shots,
+                  tournamentId,
+                  player: p
+              } as RoundHistory;
+          }
+          return {
+              id: `temp-${p}`,
+              date: new Date().toLocaleString(),
+              courseName: activeCourse.name,
+              scorecard: [], // Empty initially
+              shots: [],
+              tournamentId,
+              player: p
+          } as RoundHistory;
+      });
+      
+      // Set initial view immediately so UI is responsive
+      setGroupScorecards(placeholders);
+
+      if (tournamentId && isOnline && players.length > 0) {
+          try {
+              // 2. Fetch latest data for everyone
+              const promises = players.map(async p => {
+                  // If this is the local user, we prefer local state BUT we want to ensure we don't duplicate
+                  // We'll handle local merge after fetch.
+                  const cloudData = await CloudService.getRound(tournamentId, p);
+                  if (cloudData) {
+                      return { ...cloudData, player: p }; 
+                  }
+                  return null; // No cloud data found yet
+              });
+              
+              const fetchedRounds = await Promise.all(promises);
+              
+              // 3. Merge Cloud Data with Local State
+              // If we have cloud data for a player, use it.
+              // EXCEPTION: For the current user (scorerDisplayName), we typically trust local state 
+              // because it might have unsynced changes.
+              
+              const mergedRounds = players.map(p => {
+                  const cloudVersion = fetchedRounds.find(r => r && r.player === p);
+                  
+                  if (p === scorerDisplayName) {
+                      // For current user, use local state
+                      return {
+                          id: cloudVersion?.id || 'local', // Use real ID if available
+                          date: new Date().toLocaleString(),
+                          courseName: activeCourse.name,
+                          scorecard: scorecard,
+                          shots: shots,
+                          tournamentId,
+                          player: p
+                      } as RoundHistory;
+                  }
+                  
+                  // For others, use cloud version if available, else placeholder
+                  if (cloudVersion) return cloudVersion;
+                  
+                  return {
+                      id: `temp-${p}`,
+                      date: new Date().toLocaleString(),
+                      courseName: activeCourse.name,
+                      scorecard: [],
+                      shots: [],
+                      tournamentId,
+                      player: p
+                  } as RoundHistory;
+              });
+
+              setGroupScorecards(mergedRounds);
+          } catch (e) {
+              console.error("Failed to load group scores", e);
+          }
+      }
+  };
+
   const drivingDist = useMemo(() => {
       if (isTrackingMode && trackingStartPos && liveLocation) {
           return MathUtils.calculateDistance(trackingStartPos, liveLocation);
@@ -404,20 +512,8 @@ const PlayRound = () => {
         setShots(replayRound.shots);
         setScorecard(replayRound.scorecard);
         setShowTeeSelect(false);
-    } else {
-        const searchParams = new URLSearchParams(location.search);
-        if (searchParams.get('restore') === 'true' && user) {
-            const saved = StorageService.getTempState(user);
-            if (saved) {
-                setCurrentHoleIdx(saved.currentHoleIndex);
-                setShots(saved.shots);
-                setScorecard(saved.scorecard);
-                setShotNum(saved.currentShotNum);
-                // If restore, we don't show tee select unless data is missing
-                setShowTeeSelect(false);
-            }
-        }
-    }
+    } 
+    // Saved State Logic is now handled synchronously in useState initialization above
   }, []);
 
   // Update Ball Pos when hole changes IF we are at the tee
@@ -431,7 +527,6 @@ const PlayRound = () => {
       }
   }, [currentHoleIdx, activeTee]);
 
-  // ... (Other effects same) ...
   useEffect(() => {
     if (isReplay || !navigator.geolocation) return;
     watchIdRef.current = navigator.geolocation.watchPosition((p) => {
@@ -551,11 +646,10 @@ const PlayRound = () => {
     return (sorted.find(c => c.carry >= distLandingToGreen) || sorted[sorted.length-1]).name;
   }, [distLandingToGreen, bag, currentLayupStrategy, distToGreen, shotNum]);
 
-  // ... (Standard Handler Functions unchanged: saveDrawing, saveTextNote, handleMapClick, handleManualDrop, initiateGPSShot, setTeeToGPS, handleMeasureGPS, handleStartShot, handleFinishTracking, confirmShot, deleteAnnotation, handleDeleteShot) ...
   const saveDrawing = () => {
       if (drawingPoints.length < 2) return;
       const newNote: MapAnnotation = {
-          id: crypto.randomUUID(),
+          id: crypto.randomUUID() as string,
           courseId: activeCourse.id,
           holeNumber: hole.number,
           type: 'path',
@@ -569,7 +663,7 @@ const PlayRound = () => {
   const saveTextNote = () => {
       if (!showTextInput || !textInputValue.trim()) { setShowTextInput(null); return; }
       const newNote: MapAnnotation = {
-          id: crypto.randomUUID(),
+          id: crypto.randomUUID() as string,
           courseId: activeCourse.id,
           holeNumber: hole.number,
           type: 'text',
@@ -586,7 +680,7 @@ const PlayRound = () => {
     if (isReplay) return;
     if (isNoteMode) {
         if (activeTool === 'pin') {
-            const newNote: MapAnnotation = { id: crypto.randomUUID(), courseId: activeCourse.id, holeNumber: hole.number, type: 'icon', subType: 'flag', points: [{lat: latlng.lat, lng: latlng.lng}] };
+            const newNote: MapAnnotation = { id: crypto.randomUUID() as string, courseId: activeCourse.id, holeNumber: hole.number, type: 'icon', subType: 'flag', points: [{lat: latlng.lat, lng: latlng.lng}] };
             StorageService.saveAnnotation(newNote);
             setAnnotations(prev => [...prev, newNote]);
         } else if (activeTool === 'draw') {
@@ -624,7 +718,7 @@ const PlayRound = () => {
         setPendingShot({ pos: gpsPos, isGPS: true, dist: MathUtils.calculateDistance(currentBallPos, gpsPos) });
     };
     if (liveLocation && gpsAccuracy && gpsAccuracy < 50) success({ coords: { latitude: liveLocation.lat, longitude: liveLocation.lng } });
-    else navigator.geolocation.getCurrentPosition(success, (err) => alert("GPS Error: " + err.message), { enableHighAccuracy: true, timeout: 5000 });
+    else navigator.geolocation.getCurrentPosition(success, (err: any) => alert("GPS Error: " + err.message), { enableHighAccuracy: true, timeout: 5000 });
   };
 
   const setTeeToGPS = () => {
@@ -633,7 +727,7 @@ const PlayRound = () => {
         if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
     };
     if (liveLocation && gpsAccuracy && gpsAccuracy < 50) success({ coords: { latitude: liveLocation.lat, longitude: liveLocation.lng } });
-    else navigator.geolocation.getCurrentPosition(success, (err) => alert("GPS Error: " + err.message));
+    else navigator.geolocation.getCurrentPosition(success, (err: any) => alert("GPS Error: " + err.message));
   };
 
   const handleMeasureGPS = () => {
@@ -641,7 +735,7 @@ const PlayRound = () => {
       navigator.geolocation.getCurrentPosition((pos) => {
           setCurrentBallPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
           if (navigator.vibrate) navigator.vibrate(50);
-      }, (err) => alert("GPS Error: " + err.message));
+      }, (err: any) => alert("GPS Error: " + err.message));
   };
 
   const handleStartShot = () => {
@@ -754,6 +848,7 @@ const PlayRound = () => {
                 putts: mainScore.putts, 
                 penalties: mainScore.pens 
             };
+            // Upsert Logic: Filter out existing entry for this hole, then add new one
             const updatedScorecard = [...scorecard.filter(s => s.holeNumber !== hole.number), newScore];
             setScorecard(updatedScorecard);
         }
@@ -770,6 +865,7 @@ const PlayRound = () => {
                     penalties: s.pens
                 };
                 // Submit hole score individually to avoid overwriting full round data blindly
+                // CloudService.submitHoleScore also uses filter/push upsert logic
                 return CloudService.submitHoleScore(tournamentId, playerName, holeData, activeCourse.name);
             });
             await Promise.all(playerPromises);
@@ -813,30 +909,12 @@ const PlayRound = () => {
       
       scoreConflicts.forEach(c => {
           if (decisions[c.player] === 'cloud') {
-              // Fetch exact hole data from cloud or infer (Since we only stored total in conflict, we might need re-fetch or approximation)
-              // For simplicity in this logic, we keep the LOCAL score logic but we assume the user corrected it in UI or we simply don't overwrite.
-              // Actually, better: if user chose Cloud, we remove that player from the save list effectively, OR update local with cloud val.
-              // Let's rely on re-fetching logic? No, too complex.
-              // Simplest approach: if 'cloud' chosen, we just DON'T send the update for that player.
               delete resolvedScores[c.player];
           }
       });
       
       // Proceed to save remaining scores ignoring conflicts
       saveHoleScore(resolvedScores, true);
-  };
-
-  const openFullScorecard = async () => {
-      setShowFullCard(true);
-      if (tournamentId && isOnline && trackedPlayers.length > 0) {
-          try {
-              const promises = trackedPlayers.map(p => CloudService.getRound(tournamentId, p));
-              const rounds = await Promise.all(promises);
-              setGroupScorecards(rounds.filter(r => r !== null) as RoundHistory[]);
-          } catch (e) {
-              console.error("Failed to load group scores", e);
-          }
-      }
   };
 
   const loadHole = (idx: number) => {
@@ -865,7 +943,7 @@ const PlayRound = () => {
 
     const cardToSave = finalScorecard || scorecard;
     const history = { 
-        id: crypto.randomUUID(), 
+        id: crypto.randomUUID() as string, 
         date: new Date().toLocaleString(), 
         courseName: activeCourse.name, 
         scorecard: cardToSave, 

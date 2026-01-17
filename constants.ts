@@ -1,4 +1,5 @@
 
+
 import { ClubStats, GolfCourse } from './types';
 
 export const DEFAULT_BAG: ClubStats[] = [
@@ -62,7 +63,7 @@ export const DUVENHOF_COURSE: GolfCourse = {
     { number: 9, par: 4, tee: { lat: 51.259009, lng: 6.607590 }, green: { lat: 51.256032, lng: 6.606043 }, teeBoxes: [] },
     { number: 10, par: 3, tee: { lat: 51.256458, lng: 6.606498 }, green: { lat: 51.257419, lng: 6.606892 }, teeBoxes: [] },
     { number: 11, par: 4, tee: { lat: 51.256823, lng: 6.607438 }, green: { lat: 51.259129, lng: 6.604306 }, teeBoxes: [] },
-    { number: 12, par: 3, tee: { lat: 51.259052, lng: 6.603608 }, green: { lat: 51.260501, lng: 6.601357 }, teeBoxes: [] },
+    { number: 12, par: 4, tee: { lat: 51.259052, lng: 6.603608 }, green: { lat: 51.260501, lng: 6.601357 }, teeBoxes: [] },
     { number: 13, par: 3, tee: { lat: 51.260116, lng: 6.601089 }, green: { lat: 51.259186, lng: 6.602760 }, teeBoxes: [] },
     { number: 14, par: 5, tee: { lat: 51.259147, lng: 6.601981 }, green: { lat: 51.255365, lng: 6.601745 }, teeBoxes: [] },
     { number: 15, par: 4, tee: { lat: 51.255140, lng: 6.603011 }, green: { lat: 51.258660, lng: 6.603824 }, teeBoxes: [] },

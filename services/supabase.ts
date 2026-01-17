@@ -251,17 +251,28 @@ export const CloudService = {
       // Process rounds into leaderboard format
       const entries: LeaderboardEntry[] = data.map((row: any) => {
           const r: RoundHistory = row.round_data;
-          const score = r.scorecard.reduce((acc, h) => acc + h.shotsTaken + h.putts + h.penalties, 0);
+          
+          const totalScore = r.scorecard.reduce((acc, h) => acc + h.shotsTaken + h.putts + h.penalties, 0);
+          const totalPar = r.scorecard.reduce((acc, h) => acc + (Number(h.par) || 4), 0);
+          const scoreToPar = totalScore - totalPar;
+          
+          // Determine "Thru" (holes played)
+          // If holes is 18 (or 9 for 9 hole course), mark as F (Finished)
+          const holesPlayed = r.scorecard.length;
+          // Simple heuristic: if 18 played, assume finished. 
+          const thruDisplay = holesPlayed >= 18 ? 'F' : holesPlayed;
+
           return {
               username: row.username,
-              totalScore: score,
-              thru: r.scorecard.length,
+              totalScore: totalScore,
+              scoreToPar: scoreToPar,
+              thru: thruDisplay,
               roundData: { ...r, player: row.username } // Inject player name for display
           };
       });
 
-      // Sort by Score (ASC)
-      return entries.sort((a, b) => a.totalScore - b.totalScore);
+      // Sort by Score To Par (ASC)
+      return entries.sort((a, b) => a.scoreToPar - b.scoreToPar);
   },
 
   // ---------------------------------------------------
@@ -342,7 +353,7 @@ export const CloudService = {
   },
 
   // ---------------------------------------------------
-  // AUTH & SESSION MANAGEMENT (Existing)
+  // AUTH & SESSION MANAGEMENT
   // ---------------------------------------------------
 
   checkProfileExists: async (username: string): Promise<boolean> => {
@@ -362,7 +373,8 @@ export const CloudService = {
       success: boolean; 
       sessionId?: string; 
       bag?: ClubStats[]; 
-      history?: RoundHistory[] 
+      history?: RoundHistory[];
+      preferences?: any;
   }> => {
       const supabase = getClient();
       if (!supabase) {
@@ -372,12 +384,25 @@ export const CloudService = {
 
       const newSessionId = crypto.randomUUID();
 
-      // 1. Upsert Profile with new Session ID
+      // 1. Fetch Existing Profile (to get preferences and avoid overwriting them)
+      let existingPrefs = {};
+      const { data: profile } = await supabase
+          .from('profiles')
+          .select('preferences')
+          .eq('username', username)
+          .single();
+      
+      if (profile && profile.preferences) {
+          existingPrefs = profile.preferences;
+      }
+
+      // 2. Upsert Profile with new Session ID AND Existing Preferences
       const { error: profileError } = await supabase
           .from('profiles')
           .upsert({ 
               username: username, 
               current_session_id: newSessionId,
+              preferences: existingPrefs, // Preserve or set default
               last_active: new Date().toISOString()
           }, { onConflict: 'username' });
       
@@ -387,7 +412,7 @@ export const CloudService = {
           return { success: false };
       }
 
-      // 2. Fetch User Bag
+      // 3. Fetch User Bag
       let bag: ClubStats[] | undefined = undefined;
       const { data: bagData } = await supabase
           .from('user_bags')
@@ -397,7 +422,7 @@ export const CloudService = {
       
       if (bagData) bag = bagData.bag_data;
 
-      // 3. Fetch User History
+      // 4. Fetch User History
       let history: RoundHistory[] | undefined = undefined;
       const { data: roundsData } = await supabase
           .from('user_rounds')
@@ -409,7 +434,7 @@ export const CloudService = {
           history = roundsData.map((r: any) => r.round_data);
       }
 
-      return { success: true, sessionId: newSessionId, bag, history };
+      return { success: true, sessionId: newSessionId, bag, history, preferences: existingPrefs };
   },
 
   validateSession: async (username: string, localSessionId: string): Promise<boolean> => {
@@ -434,7 +459,7 @@ export const CloudService = {
   },
 
   // ---------------------------------------------------
-  // DATA SYNCING (Existing)
+  // DATA SYNCING
   // ---------------------------------------------------
 
   syncBag: async (username: string, bag: ClubStats[]) => {
@@ -450,6 +475,23 @@ export const CloudService = {
           }, { onConflict: 'username' });
       
       if (error) console.error("Failed to sync bag:", error.message);
+  },
+
+  syncPreferences: async (username: string, preferences: any) => {
+      const supabase = getClient();
+      if (!supabase) return;
+
+      // We use update here to avoid overwriting session IDs if a race condition occurred.
+      // Changing preferences counts as activity, so we update last_active.
+      const { error } = await supabase
+          .from('profiles')
+          .update({ 
+              preferences: preferences,
+              last_active: new Date().toISOString()
+          })
+          .eq('username', username);
+      
+      if (error) console.error("Failed to sync preferences:", error.message);
   },
 
   syncRound: async (username: string, round: RoundHistory, tournamentId?: string) => {

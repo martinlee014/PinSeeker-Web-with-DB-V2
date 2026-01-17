@@ -282,7 +282,7 @@ const CourseEditor = () => {
 
   if (step === 'info') {
     return (
-      <div className="p-6 bg-gray-900 min-h-screen text-white flex flex-col gap-6">
+      <div className="p-6 bg-gray-900 min-h-screen text-white flex flex-col gap-6 pt-[calc(1rem+env(safe-area-inset-top))]">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="p-2 bg-gray-800 rounded-lg"><ChevronLeft /></button>
           <h1 className="text-2xl font-bold">Course Info</h1>
@@ -364,29 +364,31 @@ const CourseEditor = () => {
 
         </MapContainer>
 
-        {/* Top Controls */}
-        <div className="absolute top-4 left-4 z-[1000] flex gap-2">
-           <button onClick={() => setStep('info')} className="bg-black/60 p-3 rounded-full text-white backdrop-blur"><ArrowLeft /></button>
-           <div className="bg-black/60 backdrop-blur px-4 py-3 rounded-full text-white font-bold flex items-center gap-2">
+        {/* Top Controls - Fixed for Notch/Safe Area */}
+        <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] left-4 right-4 z-[1000] flex justify-between items-start pointer-events-none">
+           <button onClick={() => setStep('info')} className="bg-black/60 p-3 rounded-full text-white backdrop-blur pointer-events-auto shadow-lg"><ArrowLeft /></button>
+           
+           <div className="bg-black/60 backdrop-blur px-4 py-3 rounded-full text-white font-bold flex items-center gap-2 pointer-events-auto shadow-lg">
                Hole {currentHoleIdx + 1}
                <div className="flex gap-1 ml-2">
                    <button onClick={() => setCurrentHoleIdx(Math.max(0, currentHoleIdx-1))} className="p-1 hover:bg-white/20 rounded"><ArrowLeft size={16}/></button>
                    <button onClick={() => setCurrentHoleIdx(Math.min(holes.length-1, currentHoleIdx+1))} className="p-1 hover:bg-white/20 rounded"><ArrowRight size={16}/></button>
                </div>
            </div>
-           <button onClick={handleSave} className="bg-green-600 px-6 py-3 rounded-full text-white font-bold shadow-lg ml-auto">DONE</button>
+           
+           <button onClick={handleSave} className="bg-green-600 px-6 py-3 rounded-full text-white font-bold shadow-lg pointer-events-auto">DONE</button>
         </div>
 
         {/* Overlay Instructions */}
         {editMode !== 'none' && (
-            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-black/80 text-white px-4 py-2 rounded-xl text-sm font-bold border border-yellow-500 animate-pulse pointer-events-none">
+            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[1000] bg-black/80 text-white px-4 py-2 rounded-xl text-sm font-bold border border-yellow-500 animate-pulse pointer-events-none mt-[env(safe-area-inset-top)]">
                 {editMode === 'edit_tee_loc' ? "Tap Map to Place Tee Box" : "Tap Map Edges to Draw Green"}
             </div>
         )}
       </div>
 
       {/* BOTTOM EDITOR PANEL */}
-      <div className="bg-gray-900 border-t border-gray-800 h-[40vh] flex flex-col">
+      <div className="bg-gray-900 border-t border-gray-800 h-[40vh] flex flex-col pb-[env(safe-area-inset-bottom)]">
           {/* Tabs */}
           <div className="flex bg-gray-800 p-1">
              <button onClick={() => setEditMode('none')} className={`flex-1 py-2 text-xs font-bold ${editMode !== 'draw_green' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>Tee Boxes</button>

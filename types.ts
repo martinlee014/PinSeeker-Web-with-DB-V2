@@ -1,5 +1,4 @@
 
-
 export interface LatLng {
   lat: number;
   lng: number;
@@ -130,7 +129,8 @@ export interface Tournament {
 export interface LeaderboardEntry {
     username: string;
     totalScore: number;
-    thru: number;
+    scoreToPar: number; // New field for PGA style display
+    thru: number | 'F'; // Updated to allow 'F' string
     roundData: RoundHistory;
 }
 

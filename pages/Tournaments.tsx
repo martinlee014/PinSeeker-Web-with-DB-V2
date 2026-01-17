@@ -199,6 +199,18 @@ const Tournaments = () => {
         }
     }
 
+    const formatScoreToPar = (score: number) => {
+        if (score === 0) return "E";
+        if (score > 0) return `+${score}`;
+        return `${score}`;
+    };
+
+    const getScoreColor = (score: number) => {
+        if (score < 0) return 'text-red-400 font-black'; // Under Par
+        if (score === 0) return 'text-green-400 font-bold'; // Even
+        return 'text-white font-medium'; // Over Par
+    };
+
     if (!isOnline) {
         return (
             <div className="p-10 text-center text-gray-500">
@@ -240,9 +252,12 @@ const Tournaments = () => {
                      </button>
                 </div>
 
-                <h3 className="text-gray-400 font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <Trophy size={14} className="text-yellow-500" /> Leaderboard
-                </h3>
+                <div className="flex items-center justify-between mb-3 px-1">
+                    <h3 className="text-gray-400 font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+                        <Trophy size={14} className="text-yellow-500" /> Leaderboard
+                    </h3>
+                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">To Par / Thru</span>
+                </div>
 
                 {isLoadingLB ? (
                     <div className="flex justify-center py-10"><Loader2 className="animate-spin text-white"/></div>
@@ -251,29 +266,33 @@ const Tournaments = () => {
                         No scores posted yet. Be the first!
                     </div>
                 ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-1">
+                        {/* PGA Style Header (Optional, implied by "To Par / Thru") */}
+                        <div className="grid grid-cols-[32px_1fr_60px_40px] gap-2 px-3 py-1 text-[10px] text-gray-500 font-bold uppercase">
+                            <div className="text-center">Pos</div>
+                            <div>Player</div>
+                            <div className="text-right">Score</div>
+                            <div className="text-right">Thru</div>
+                        </div>
+
                         {leaderboard.map((entry, idx) => (
-                            <div key={idx} className="bg-gray-800 p-3 rounded-xl border border-gray-700 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-gray-400 text-black' : idx === 2 ? 'bg-orange-700 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                            <div key={idx} className="bg-gray-800 p-3 rounded-xl border border-gray-700 grid grid-cols-[32px_1fr_60px_40px] items-center gap-2">
+                                <div className="flex justify-center">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-gray-400 text-black' : idx === 2 ? 'bg-orange-700 text-white' : 'text-gray-500'}`}>
                                         {idx + 1}
                                     </div>
-                                    <div>
-                                        <div className="text-white font-bold text-sm">{safeName(entry.username)}</div>
-                                        <div className="text-[10px] text-gray-500">Thru {entry.thru}</div>
+                                </div>
+                                <div className="truncate">
+                                    <div className="text-white font-bold text-sm truncate">{safeName(entry.username).replace('Guest: ', '')}</div>
+                                    <div className="text-[9px] text-gray-500 truncate flex items-center gap-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> Live
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <div className={`text-xl font-black ${entry.totalScore < 72 ? 'text-red-400' : 'text-white'}`}>
-                                        {entry.totalScore}
-                                    </div>
-                                    <button 
-                                        onClick={() => spectateRound(entry)}
-                                        className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-blue-400"
-                                        title="Spectate / Replay"
-                                    >
-                                        <Eye size={16} />
-                                    </button>
+                                <div className={`text-right text-lg ${getScoreColor(entry.scoreToPar)}`}>
+                                    {formatScoreToPar(entry.scoreToPar)}
+                                </div>
+                                <div className="text-right text-xs font-mono text-gray-400">
+                                    {entry.thru}
                                 </div>
                             </div>
                         ))}

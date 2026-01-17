@@ -1,14 +1,22 @@
 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { RoundHistory, HoleScore } from '../types';
-import { ChevronLeft, Share2, MapPin, Calendar, TrendingUp, Grid3X3, AlertCircle } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { RoundHistory, HoleScore, GolfHole } from '../types';
+import { ChevronLeft, Share2, MapPin, Calendar, TrendingUp, Grid3X3, AlertCircle, Users } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { CloudService } from '../services/supabase';
+import { StorageService } from '../services/storage';
+import { ScorecardTable } from '../components/Modals';
 
 const RoundSummary = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { round } = location.state as { round: RoundHistory } || {};
-  const [activeTab, setActiveTab] = useState<'overview' | 'scorecard'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'scorecard' | 'group'>('overview');
+  
+  // Group State
+  const [groupData, setGroupData] = useState<RoundHistory[]>([]);
+  const [loadingGroup, setLoadingGroup] = useState(false);
+  const [holes, setHoles] = useState<{number: number, par: number}[]>([]);
 
   if (!round) return <div className="p-10 text-center text-gray-500">No data available</div>;
 
@@ -39,6 +47,34 @@ const RoundSummary = () => {
   const scoreDiff = stats.total.score - stats.total.par;
   const scoreDiffStr = scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff === 0 ? 'E' : `${scoreDiff}`;
   const scoreColor = scoreDiff > 0 ? 'text-white' : scoreDiff === 0 ? 'text-yellow-400' : 'text-red-400';
+
+  // Load Group Data & Holes Info
+  useEffect(() => {
+    // 1. Resolve Holes/Par data
+    const all = StorageService.getAllCourses();
+    const c = all.find(x => x.name === round.courseName);
+    if(c) {
+        setHoles(c.holes.map(h => ({ number: h.number, par: h.par })));
+    } else {
+        // Fallback: generate from scorecard or standard 18
+        if(round.scorecard.length > 0) {
+             setHoles(round.scorecard.map(s => ({ number: s.holeNumber, par: s.par })));
+        } else {
+             setHoles(Array.from({length: 18}, (_, i) => ({ number: i+1, par: 4 })));
+        }
+    }
+
+    // 2. Load Group if tournament
+    if (activeTab === 'group' && round.tournamentId && groupData.length === 0) {
+          setLoadingGroup(true);
+          CloudService.getTournamentLeaderboard(round.tournamentId)
+            .then(entries => {
+                setGroupData(entries.map(e => e.roundData));
+            })
+            .catch(err => console.error(err))
+            .finally(() => setLoadingGroup(false));
+    }
+  }, [round, activeTab, groupData.length]);
 
   // --- Components ---
 
@@ -124,7 +160,6 @@ const RoundSummary = () => {
                 <div className="flex bg-gray-900 border-b border-gray-800">
                     <div className="w-12 p-2 text-[10px] text-gray-500 font-bold border-r border-gray-800">Score</div>
                     {displayHoles.map(h => {
-                        // More robust score check: if shotsTaken > 0, we calculate score, regardless of par type validity (though par is needed for color)
                         const rawScore = h.shotsTaken + h.putts + h.penalties;
                         const parVal = Number(h.par);
                         const hasPar = !isNaN(parVal) && parVal > 0;
@@ -227,34 +262,6 @@ const RoundSummary = () => {
               </div>
           </div>
 
-          {/* Key Stats Grid */}
-          <div className="grid grid-cols-2 gap-3">
-              <StatBox 
-                label="Putts" 
-                value={stats.total.putts} 
-                sub={`Avg ${(stats.total.putts / (stats.total.count || 1)).toFixed(1)}`}
-                icon={Grid3X3}
-              />
-              <StatBox 
-                label="GIR" 
-                value={`${Math.round((stats.total.gir / (stats.total.count || 1)) * 100)}%`}
-                sub={`${stats.total.gir}/${stats.total.count}`}
-                icon={TrendingUp}
-              />
-              <StatBox 
-                label="Penalties" 
-                value={stats.total.penalties}
-                sub="Strokes Lost"
-                icon={AlertCircle}
-              />
-              <StatBox 
-                label="Scrambling" 
-                value="--" // Placeholder for future logic
-                sub="Up & Down"
-                icon={Share2}
-              />
-          </div>
-
           {/* Toggle Switch */}
           <div className="bg-gray-800 p-1 rounded-xl flex">
               <button 
@@ -267,14 +274,29 @@ const RoundSummary = () => {
                 onClick={() => setActiveTab('scorecard')}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'scorecard' ? 'bg-gray-700 text-white shadow' : 'text-gray-500'}`}
               >
-                  Detailed Scorecard
+                  Card
               </button>
+              {round.tournamentId && (
+                  <button 
+                    onClick={() => setActiveTab('group')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${activeTab === 'group' ? 'bg-blue-600 text-white shadow' : 'text-gray-500'}`}
+                  >
+                      <Users size={12}/> Group
+                  </button>
+              )}
           </div>
 
           {/* Tab Content */}
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {activeTab === 'overview' ? (
+            {activeTab === 'overview' && (
                 <div>
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                        <StatBox label="Putts" value={stats.total.putts} sub={`Avg ${(stats.total.putts / (stats.total.count || 1)).toFixed(1)}`} icon={Grid3X3} />
+                        <StatBox label="GIR" value={`${Math.round((stats.total.gir / (stats.total.count || 1)) * 100)}%`} sub={`${stats.total.gir}/${stats.total.count}`} icon={TrendingUp} />
+                        <StatBox label="Penalties" value={stats.total.penalties} sub="Strokes Lost" icon={AlertCircle} />
+                        <StatBox label="Scrambling" value="--" sub="Up & Down" icon={Share2} />
+                    </div>
+
                     <h3 className="text-gray-400 font-bold text-xs uppercase tracking-wider mb-3">Front / Back Split</h3>
                     <SplitTable />
                     
@@ -310,10 +332,27 @@ const RoundSummary = () => {
                         })}
                     </div>
                 </div>
-            ) : (
+            )}
+            
+            {activeTab === 'scorecard' && (
                 <div>
                     <h3 className="text-gray-400 font-bold text-xs uppercase tracking-wider mb-3">Full Scorecard</h3>
                     <ScorecardGrid />
+                </div>
+            )}
+
+            {activeTab === 'group' && (
+                <div className="h-[60vh] flex flex-col">
+                    <h3 className="text-gray-400 font-bold text-xs uppercase tracking-wider mb-3">Tournament Leaderboard</h3>
+                    {loadingGroup ? (
+                        <div className="flex-1 flex items-center justify-center text-gray-500">Loading...</div>
+                    ) : groupData.length === 0 ? (
+                        <div className="text-center py-10 text-gray-500 bg-gray-800/30 rounded-xl border border-dashed border-gray-700">No group data available.</div>
+                    ) : (
+                        <div className="flex-1 rounded-xl border border-gray-700 overflow-hidden">
+                             <ScorecardTable holes={holes} scorecards={groupData} />
+                        </div>
+                    )}
                 </div>
             )}
           </div>

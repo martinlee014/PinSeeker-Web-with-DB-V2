@@ -1,5 +1,5 @@
 
-import { useState, ReactNode, ChangeEvent, useEffect, FC } from 'react';
+import { useState, ReactNode, ChangeEvent, useEffect, FC, Fragment } from 'react';
 import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw, Users, AlertCircle } from 'lucide-react';
 import { ClubStats, GolfHole, HoleScore, RoundHistory } from '../types';
 
@@ -305,22 +305,24 @@ export const ScoreModal = ({
   onSave: (scores: Record<string, PlayerScoreState>) => void, 
   onClose: () => void 
 }) => {
-  const [allScores, setAllScores] = useState<Record<string, PlayerScoreState>>({});
-
-  useEffect(() => {
+  // Use lazy initialization for state. This ensures logic runs ONLY ONCE when modal opens.
+  // This fixes the bug where background updates (like GPS) caused PlayRound to re-render,
+  // which updated props, triggered useEffect, and reset the user's manual score entry.
+  const [allScores, setAllScores] = useState<Record<string, PlayerScoreState>>(() => {
       const initial: Record<string, PlayerScoreState> = {};
       const list = players.length > 0 ? players : [currentPlayer];
       
       list.forEach(p => {
           const isMain = p === currentPlayer;
+          // Default to Par, or if "Me", use recorded shots + 2 putts assumption
           initial[p] = {
               putts: 2,
               pens: 0,
               totalScore: isMain ? Math.max(par, recordedShots + 2) : par
           };
       });
-      setAllScores(initial);
-  }, [players, currentPlayer, par, recordedShots]);
+      return initial;
+  });
 
   const updateScore = (player: string, field: keyof PlayerScoreState, delta: number) => {
       setAllScores(prev => {
@@ -331,9 +333,11 @@ export const ScoreModal = ({
               pScore.totalScore = Math.max(minScore, pScore.totalScore + delta);
           } else if (field === 'putts') {
               pScore.putts = Math.max(0, pScore.putts + delta);
+              // Auto-update total if putts change
               pScore.totalScore = Math.max(1, pScore.totalScore + (pScore.putts - (prev[player].putts))); 
           } else if (field === 'pens') {
               pScore.pens = Math.max(0, pScore.pens + delta);
+              // Auto-update total if pens change
               pScore.totalScore = Math.max(1, pScore.totalScore + (pScore.pens - (prev[player].pens)));
           }
           return { ...prev, [player]: pScore };
@@ -465,10 +469,75 @@ export const HoleSelectorModal = ({ holes, currentIdx, onSelect, onClose }: { ho
   );
 };
 
+// --- Reusable Scorecard Table for Horizontal Scrolling ---
+export const ScorecardTable = ({ holes, scorecards }: { holes: {number: number, par: number}[], scorecards: RoundHistory[] }) => {
+  const getScore = (card: RoundHistory, holeNum: number) => {
+      const s = card.scorecard.find(h => h.holeNumber === holeNum);
+      return s ? s.shotsTaken + s.putts + s.penalties : null;
+  };
+
+  const getTotals = (card: RoundHistory) => {
+      return card.scorecard.reduce((acc, h) => acc + h.shotsTaken + h.putts + h.penalties, 0);
+  };
+  
+  // Use fixed column width to ensure scrolling trigger
+  const colWidth = "minmax(90px, 1fr)"; 
+
+  return (
+    <div className="flex-1 overflow-auto bg-gray-900 relative">
+        <div style={{ display: 'grid', gridTemplateColumns: `60px repeat(${scorecards.length}, ${colWidth})` }}>
+            {/* Header Row */}
+            <div className="sticky left-0 top-0 z-30 bg-gray-800 p-3 border-b border-r border-gray-700 font-bold text-gray-500 uppercase text-xs flex items-center justify-center shadow-md shadow-black/50">
+                Hole
+            </div>
+            {scorecards.map((c, i) => (
+                <div key={i} className="sticky top-0 z-20 bg-gray-800 p-3 border-b border-gray-700 font-bold text-white text-center text-xs truncate shadow-sm">
+                    {c.player?.replace('Guest: ', '') || 'Player'}
+                </div>
+            ))}
+
+            {/* Rows */}
+            {holes.map(h => (
+                <Fragment key={h.number}>
+                    <div className="sticky left-0 z-10 bg-gray-900 p-2 border-b border-r border-gray-800 text-center flex flex-col justify-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
+                        <span className="leading-none text-white text-sm font-bold">{h.number}</span>
+                        <span className="text-[9px] text-gray-500 leading-none mt-1">P{h.par}</span>
+                    </div>
+                    {scorecards.map((c, i) => {
+                        const score = getScore(c, h.number);
+                        let color = 'text-gray-500';
+                        if (score) {
+                            if (score < h.par) color = 'text-red-400 font-black';
+                            else if (score > h.par) color = 'text-blue-400';
+                            else color = 'text-white font-bold';
+                        }
+                        return (
+                            <div key={i} className={`p-3 border-b border-gray-800 text-center text-sm flex items-center justify-center border-l border-gray-800/30 ${color}`}>
+                                {score || '-'}
+                            </div>
+                        );
+                    })}
+                </Fragment>
+            ))}
+
+            {/* Totals */}
+            <div className="sticky left-0 bottom-0 z-30 bg-gray-800 p-3 border-t border-r border-gray-700 font-bold text-gray-400 text-xs uppercase text-center shadow-[0_-2px_5px_-2px_rgba(0,0,0,0.5)]">
+                TOT
+            </div>
+            {scorecards.map((c, i) => (
+                <div key={i} className="sticky bottom-0 z-20 bg-gray-800 p-3 border-t border-gray-700 text-white text-center font-bold text-sm shadow-sm">
+                    {getTotals(c)}
+                </div>
+            ))}
+        </div>
+    </div>
+  );
+};
+
 export const FullScorecardModal = ({ 
   holes, 
-  groupScorecards = [], // Array of RoundHistory to show side-by-side
-  scorecard, // Fallback single
+  groupScorecards = [], 
+  scorecard,
   onFinishRound, 
   onClose 
 }: { 
@@ -480,67 +549,17 @@ export const FullScorecardModal = ({
 }) => {
   const cards = groupScorecards.length > 0 ? groupScorecards : (scorecard ? [{ scorecard, player: 'Me' } as RoundHistory] : []);
 
-  const getScore = (card: RoundHistory, holeNum: number) => {
-      const s = card.scorecard.find(h => h.holeNumber === holeNum);
-      return s ? s.shotsTaken + s.putts + s.penalties : null;
-  };
-
-  const getTotals = (card: RoundHistory) => {
-      return card.scorecard.reduce((acc, h) => acc + h.shotsTaken + h.putts + h.penalties, 0);
-  };
-
   return (
-    <ModalOverlay onClose={onClose} className="max-w-4xl">
+    <ModalOverlay onClose={onClose} className="max-w-4xl w-full h-[80vh]">
       <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900 shrink-0">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Trophy size={18} className="text-yellow-500"/> Group Scorecard
         </h3>
         <button type="button" onClick={onClose}><X className="text-gray-400" /></button>
       </div>
-      <div className="flex-1 overflow-auto p-0 bg-gray-900">
-        <div className="min-w-max">
-            <div className="grid bg-gray-800 border-b border-gray-700 sticky top-0 z-10" style={{ gridTemplateColumns: `60px repeat(${cards.length}, minmax(80px, 1fr))` }}>
-                <div className="p-3 text-xs font-bold text-gray-500 uppercase flex items-center justify-center">Hole</div>
-                {cards.map((c, i) => (
-                    <div key={i} className="p-3 text-xs font-bold text-white text-center truncate border-l border-gray-700">
-                        {c.player?.replace('Guest: ', '') || 'Player'}
-                    </div>
-                ))}
-            </div>
-            
-            {holes.map(h => (
-                <div key={h.number} className="grid border-b border-gray-800/50 hover:bg-gray-800/30" style={{ gridTemplateColumns: `60px repeat(${cards.length}, minmax(80px, 1fr))` }}>
-                    <div className="p-2 text-sm font-bold text-gray-400 text-center bg-gray-900/50 sticky left-0 flex flex-col justify-center border-r border-gray-800">
-                        <span className="leading-none text-white">{h.number}</span>
-                        <span className="text-[9px] text-gray-500 leading-none mt-1">P{h.par}</span>
-                    </div>
-                    {cards.map((c, i) => {
-                        const score = getScore(c, h.number);
-                        let color = 'text-gray-500';
-                        if (score) {
-                            if (score < h.par) color = 'text-red-400 font-bold';
-                            else if (score > h.par) color = 'text-blue-400';
-                            else color = 'text-white';
-                        }
-                        return (
-                            <div key={i} className={`p-3 text-sm text-center border-l border-gray-800 flex items-center justify-center ${color}`}>
-                                {score || '-'}
-                            </div>
-                        );
-                    })}
-                </div>
-            ))}
+      
+      <ScorecardTable holes={holes} scorecards={cards} />
 
-            <div className="grid bg-gray-800 font-bold sticky bottom-0 z-10 border-t border-gray-700" style={{ gridTemplateColumns: `60px repeat(${cards.length}, minmax(80px, 1fr))` }}>
-                <div className="p-3 text-xs text-gray-400 uppercase flex items-center justify-center">TOT</div>
-                {cards.map((c, i) => (
-                    <div key={i} className="p-3 text-white text-center border-l border-gray-700">
-                        {getTotals(c)}
-                    </div>
-                ))}
-            </div>
-        </div>
-      </div>
       <div className="p-4 border-t border-gray-800 shrink-0 bg-gray-900">
         <button type="button" onClick={onFinishRound} className="w-full bg-red-900/80 hover:bg-red-800 text-red-100 border border-red-700 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
           <Flag size={20} /> Finish Round & Save
