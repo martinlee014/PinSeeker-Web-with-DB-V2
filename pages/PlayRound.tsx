@@ -1,7 +1,6 @@
-// ... (keep all existing imports and code unchanged up to openFullScorecard)
 import React, { useState, useEffect, useContext, useMemo, useRef, Fragment } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Polyline, Polygon, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { AppContext } from '../App';
 import { DUVENHOF_COURSE } from '../constants';
@@ -27,8 +26,6 @@ import {
   createAnnotationTextIcon 
 } from '../utils/mapIcons';
 
-// ... (keep icon components and helpers)
-
 const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
@@ -52,7 +49,6 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
   </svg>
 );
 
-// ... (keep RotatedMapHandler and MapInitializer)
 const RotatedMapHandler = ({ 
     rotation, 
     onLongPress,
@@ -260,21 +256,24 @@ const PlayRound = () => {
   const location = useLocation();
   const { user, useYards, bag, isOnline } = useContext(AppContext);
 
-  const replayRound = location.state?.round as RoundHistory | undefined;
-  const initialHoleIdx = location.state?.initialHoleIndex || 0;
-  const passedCourse = location.state?.course as GolfCourse | undefined;
-  const tournamentId = location.state?.tournamentId as string | undefined;
+  // Safe access to state with any cast to avoid 'unknown' errors
+  const locState = location.state as any;
+
+  const replayRound = locState?.round as RoundHistory | undefined;
+  const initialHoleIdx = locState?.initialHoleIndex || 0;
+  const passedCourse = locState?.course as GolfCourse | undefined;
+  const tournamentId = locState?.tournamentId as string | undefined;
   
   // Scorer Mode check
-  const isScorerMode = !!location.state?.playerOverride;
-  const activePlayerName = location.state?.playerOverride || user || 'Guest';
+  const isScorerMode = !!locState?.playerOverride;
+  const activePlayerName = locState?.playerOverride || user || 'Guest';
   
   // Filter duplicates from group list immediately to prevent key errors
   // Memoized to prevent array reference instability causing ScoreModal resets
   const trackedPlayers = useMemo(() => {
-      const rawGroup = location.state?.group || [activePlayerName];
+      const rawGroup = locState?.group || [activePlayerName];
       return Array.from(new Set(rawGroup)) as string[];
-  }, [location.state, activePlayerName]);
+  }, [locState, activePlayerName]);
   
   // Safe Name Extraction helper
   const getDisplayName = (val: any) => {
@@ -414,9 +413,9 @@ const PlayRound = () => {
       
       // 1. Initialize placeholders for all tracked players (Deduplicated)
       // Use the scorerDisplayName's current state for "Me" if applicable
-      const players = Array.from(new Set(trackedPlayers));
+      const players: string[] = Array.from(new Set(trackedPlayers));
       
-      const placeholders: RoundHistory[] = players.map(p => {
+      const placeholders: RoundHistory[] = players.map((p: string) => {
           if (p === scorerDisplayName) {
               return {
                   id: 'local',
@@ -445,10 +444,10 @@ const PlayRound = () => {
       if (tournamentId && isOnline && players.length > 0) {
           try {
               // 2. Fetch latest data for everyone
-              const promises = players.map(async p => {
+              const promises = players.map(async (p: string) => {
                   // If this is the local user, we prefer local state BUT we want to ensure we don't duplicate
                   // We'll handle local merge after fetch.
-                  const cloudData = await CloudService.getRound(tournamentId, p);
+                  const cloudData = await CloudService.getRound(tournamentId as string, p);
                   if (cloudData) {
                       return { ...cloudData, player: p }; 
                   }
@@ -462,7 +461,7 @@ const PlayRound = () => {
               // EXCEPTION: For the current user (scorerDisplayName), we typically trust local state 
               // because it might have unsynced changes.
               
-              const mergedRounds = players.map(p => {
+              const mergedRounds = players.map((p: string) => {
                   const cloudVersion = fetchedRounds.find(r => r && r.player === p);
                   
                   if (p === scorerDisplayName) {
