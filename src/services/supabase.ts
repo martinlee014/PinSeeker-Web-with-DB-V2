@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { GolfCourse, ClubStats, RoundHistory, Tournament, LeaderboardEntry, HoleScore } from '../types';
+import { GolfCourse, ClubStats, RoundHistory, Tournament, LeaderboardEntry, HoleScore } from '../../types';
 
 // ---------------------------------------------------------
 // CONFIGURATION
@@ -456,26 +456,6 @@ export const CloudService = {
         .eq('username', username);
 
       return data.current_session_id === localSessionId;
-  },
-
-  /**
-   * Forces the cloud to accept the local session ID as the valid one.
-   * This is used when the user is in "High Priority" mode (e.g., Playing a Round)
-   * and we don't want a background device (Low Priority) to kick them off.
-   */
-  forceReclaimSession: async (username: string, localSessionId: string): Promise<void> => {
-      const supabase = getClient();
-      if (!supabase) return;
-
-      console.log(`[Session] Priority Conflict: Forcing session reclaim for ${localSessionId}`);
-
-      await supabase
-          .from('profiles')
-          .update({ 
-              current_session_id: localSessionId,
-              last_active: new Date().toISOString()
-          })
-          .eq('username', username);
   },
 
   // ---------------------------------------------------

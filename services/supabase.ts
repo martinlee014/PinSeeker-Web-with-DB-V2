@@ -1,4 +1,5 @@
 
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { GolfCourse, ClubStats, RoundHistory, Tournament, LeaderboardEntry, HoleScore } from '../types';
 
@@ -456,6 +457,19 @@ export const CloudService = {
         .eq('username', username);
 
       return data.current_session_id === localSessionId;
+  },
+  
+  forceReclaimSession: async (username: string, sessionId: string): Promise<void> => {
+      const supabase = getClient();
+      if (!supabase) return;
+
+      await supabase
+          .from('profiles')
+          .update({ 
+              current_session_id: sessionId,
+              last_active: new Date().toISOString()
+          })
+          .eq('username', username);
   },
 
   // ---------------------------------------------------

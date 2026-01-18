@@ -2,24 +2,24 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { User, LogOut, Play, Map as MapIcon, Settings as SettingsIcon, WifiOff, Trophy } from 'lucide-react';
-import { StorageService } from './services/storage';
-import { CloudService } from './services/supabase';
-import { ClubStats } from './types';
-import { DEFAULT_BAG } from './constants';
-import Onboarding from './components/Onboarding';
+import { StorageService } from '../services/storage';
+import { CloudService } from '../services/supabase';
+import { ClubStats } from '../types';
+import { DEFAULT_BAG } from '../constants';
+import Onboarding from '../components/Onboarding';
 import { BagSyncConflictModal } from './components/Modals';
 
-// Pages
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import PlayRound from './pages/PlayRound';
-import RoundSummary from './pages/RoundSummary';
-import Settings from './pages/Settings';
-import UserManual from './pages/UserManual';
-import ClubManagement from './pages/ClubManagement';
-import CourseManager from './pages/CourseManager';
-import CourseEditor from './pages/CourseEditor';
-import Tournaments from './pages/Tournaments';
+// Pages - Located at Root, so step up one level
+import Login from '../pages/Login';
+import Dashboard from '../pages/Dashboard';
+import PlayRound from '../pages/PlayRound';
+import RoundSummary from '../pages/RoundSummary';
+import Settings from '../pages/Settings';
+import UserManual from '../pages/UserManual';
+import ClubManagement from '../pages/ClubManagement';
+import CourseManager from '../pages/CourseManager';
+import CourseEditor from '../pages/CourseEditor';
+import Tournaments from '../pages/Tournaments';
 
 export const AppContext = createContext<{
   user: string | null;
@@ -205,24 +205,15 @@ const App = () => {
       if (!user || !sessionId || !navigator.onLine) return;
       
       const isValid = await CloudService.validateSession(user, sessionId);
-      
       if (!isValid) {
           // INTELLIGENT CONFLICT RESOLUTION:
-          // Check if the user is currently playing a round (URL contains '/play').
-          // We check the window location directly to ensure we capture the current state regardless of react router latency
           const isPlaying = window.location.href.includes('/play');
 
           if (isPlaying) {
               console.log("Conflict detected while playing. Auto-reclaiming session priority.");
-              // I am the golfer on the course. I win.
-              // Force the cloud to accept MY session ID again.
               await CloudService.forceReclaimSession(user, sessionId);
-              // Do NOT logout.
           } else {
-              // I am likely a background tab or a secondary device at home.
-              // Stop the heartbeat so we don't spam the server
               if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
-              
               alert("Security Alert:\nYou have logged in on another device.\n\nTo prevent data conflicts, this session has been terminated.");
               logout();
           }
@@ -232,8 +223,6 @@ const App = () => {
   const updateBag = (newBag: ClubStats[], skipCloudSync = false) => {
     setBag(newBag);
     StorageService.saveBag(newBag);
-    
-    // Cloud Sync
     if (!skipCloudSync && user && isOnline) {
         CloudService.syncBag(user, newBag);
     }
@@ -241,28 +230,23 @@ const App = () => {
 
   const login = async (username: string): Promise<boolean> => {
     try {
-        // Attempt Cloud Login
         const res = await CloudService.loginAndCreateSession(username);
         
         if (res.success && res.sessionId) {
-            // 1. Set Session
             StorageService.setCurrentUser(username);
             StorageService.setSessionId(res.sessionId);
             setUser(username);
             setSessionId(res.sessionId);
 
-            // 2. Handle History (Always pull history, simple merge/overwrite strategy)
             if (res.history && res.history.length > 0) {
                 StorageService.overwriteHistory(username, res.history);
             }
 
-            // 3. Handle Preferences (Unit System)
             if (res.preferences && typeof res.preferences.useYards !== 'undefined') {
                 setUseYards(res.preferences.useYards);
                 StorageService.setUseYards(res.preferences.useYards);
             }
 
-            // 4. Handle Bag Data with Conflict Resolution
             if (res.bag && res.bag.length > 0) {
                 const localBag = StorageService.getBag();
                 const isLocalDefault = JSON.stringify(localBag) === JSON.stringify(DEFAULT_BAG);
@@ -270,27 +254,22 @@ const App = () => {
 
                 if (isDifferent) {
                     if (isLocalDefault) {
-                         // Case A: Local is untouched default -> Safe to overwrite with Cloud
-                         updateBag(res.bag, true); // true = don't sync back to cloud yet
+                         updateBag(res.bag, true); 
                     } else {
-                         // Case B: Conflict -> Local has changes, Cloud has diff data
                          setPendingCloudBag(res.bag);
                          setShowBagSyncModal(true);
                     }
                 }
             }
-
             return true;
         } else {
             console.warn("Cloud login incomplete, using offline mode.");
-            // Offline fallback
             StorageService.setCurrentUser(username);
             setUser(username);
             return true;
         }
     } catch (e: any) {
         console.error("Login Error:", e.message || e);
-        // Fallback for offline usage
         StorageService.setCurrentUser(username);
         setUser(username);
         return true;
@@ -308,8 +287,6 @@ const App = () => {
     const newVal = !useYards;
     setUseYards(newVal);
     StorageService.setUseYards(newVal);
-    
-    // Sync preference to cloud if logged in
     if (user && isOnline) {
         CloudService.syncPreferences(user, { useYards: newVal });
     }
@@ -320,7 +297,6 @@ const App = () => {
       StorageService.saveHdcp(val);
   };
 
-  
   const handleCloseTutorial = () => {
       setShowTutorial(false);
       StorageService.markOnboardingSeen();
@@ -328,11 +304,8 @@ const App = () => {
 
   const handleResolveBagSync = (useCloud: boolean) => {
       if (useCloud && pendingCloudBag) {
-          // User chose Cloud: Overwrite local
-          updateBag(pendingCloudBag, true); // Don't push back to cloud, it's the same
+          updateBag(pendingCloudBag, true); 
       } else {
-          // User chose Local: Push local to cloud
-          // updateBag triggers sync automatically unless skipped
           updateBag(bag, false);
       }
       setShowBagSyncModal(false);

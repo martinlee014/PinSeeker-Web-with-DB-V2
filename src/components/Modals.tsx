@@ -1,7 +1,7 @@
 
 import { useState, ReactNode, ChangeEvent, useEffect, FC, Fragment } from 'react';
 import { X, Check, AlertTriangle, MapPin, Trophy, Flag, Target, Minus, Plus, Zap, Cloud, Smartphone, RefreshCw, Users, AlertCircle } from 'lucide-react';
-import { ClubStats, GolfHole, HoleScore, RoundHistory } from '../types';
+import { ClubStats, GolfHole, HoleScore, RoundHistory } from '../../types';
 
 // Updated ModalOverlay with optional maxWidth prop
 export const ModalOverlay = ({ 

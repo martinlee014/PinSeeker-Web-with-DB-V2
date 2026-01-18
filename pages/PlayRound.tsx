@@ -1,3 +1,6 @@
+
+
+// ... (keep all existing imports and code unchanged up to openFullScorecard)
 import React, { useState, useEffect, useContext, useMemo, useRef, Fragment } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Polyline, Polygon, useMapEvents, useMap } from 'react-leaflet';
@@ -26,6 +29,8 @@ import {
   createAnnotationTextIcon 
 } from '../utils/mapIcons';
 
+// ... (keep icon components and helpers)
+
 const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
@@ -49,6 +54,7 @@ const GolfBagIcon = ({ size = 24, className = "" }: { size?: number, className?:
   </svg>
 );
 
+// ... (keep RotatedMapHandler and MapInitializer)
 const RotatedMapHandler = ({ 
     rotation, 
     onLongPress,
@@ -276,7 +282,7 @@ const PlayRound = () => {
   }, [locState, activePlayerName]);
   
   // Safe Name Extraction helper
-  const getDisplayName = (val: any) => {
+  const getDisplayName = (val: any): string => {
       if (!val) return 'Guest';
       if (typeof val === 'string') return val;
       if (typeof val === 'object') return val.username || val.name || 'Player';
@@ -413,9 +419,9 @@ const PlayRound = () => {
       
       // 1. Initialize placeholders for all tracked players (Deduplicated)
       // Use the scorerDisplayName's current state for "Me" if applicable
-      const players: string[] = Array.from(new Set(trackedPlayers));
+      const players = Array.from(new Set(trackedPlayers));
       
-      const placeholders: RoundHistory[] = players.map((p: string) => {
+      const placeholders: RoundHistory[] = players.map(p => {
           if (p === scorerDisplayName) {
               return {
                   id: 'local',
@@ -444,7 +450,7 @@ const PlayRound = () => {
       if (tournamentId && isOnline && players.length > 0) {
           try {
               // 2. Fetch latest data for everyone
-              const promises = players.map(async (p: string) => {
+              const promises = players.map(async p => {
                   // If this is the local user, we prefer local state BUT we want to ensure we don't duplicate
                   // We'll handle local merge after fetch.
                   const cloudData = await CloudService.getRound(tournamentId as string, p);
@@ -461,7 +467,7 @@ const PlayRound = () => {
               // EXCEPTION: For the current user (scorerDisplayName), we typically trust local state 
               // because it might have unsynced changes.
               
-              const mergedRounds = players.map((p: string) => {
+              const mergedRounds = players.map(p => {
                   const cloudVersion = fetchedRounds.find(r => r && r.player === p);
                   
                   if (p === scorerDisplayName) {
@@ -805,7 +811,8 @@ const PlayRound = () => {
         
         for (const player of playersToCheck) {
             try {
-                const cloudRound = await CloudService.getRound(tournamentId, player);
+                // Cast tournamentId to string as it's truthy in this block
+                const cloudRound = await CloudService.getRound(tournamentId as string, player);
                 if (cloudRound) {
                     const existingScore = cloudRound.scorecard.find(s => s.holeNumber === hole.number);
                     const newTotal = scores[player].totalScore;
@@ -865,7 +872,8 @@ const PlayRound = () => {
                 };
                 // Submit hole score individually to avoid overwriting full round data blindly
                 // CloudService.submitHoleScore also uses filter/push upsert logic
-                return CloudService.submitHoleScore(tournamentId, playerName, holeData, activeCourse.name);
+                // Ensure tournamentId is treated as string
+                return CloudService.submitHoleScore(tournamentId as string, playerName, holeData, activeCourse.name);
             });
             await Promise.all(playerPromises);
         }
